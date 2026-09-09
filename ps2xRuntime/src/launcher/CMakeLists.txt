@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
+include(FetchContent)
+
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
@@ -12,6 +14,22 @@ endif()
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Gui Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Widgets)
+
+# Cross-platform joystick backend for the controller test + bind capture.
+# GLFW's own dependency guarantees the same mapping DB on Linux/Windows/macOS.
+# X11-only on Linux (the baseline container lacks wayland-scanner); Windows and
+# macOS pick their native backend automatically regardless of these flags.
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+if(NOT WIN32 AND NOT APPLE)
+    set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
+endif()
+FetchContent_Declare(glfw
+    URL https://github.com/glfw/glfw/releases/download/3.4/glfw-3.4.zip)
+FetchContent_MakeAvailable(glfw)
 
 file(GLOB LAUNCHER_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
@@ -26,9 +44,12 @@ target_include_directories(Launcher PRIVATE
 target_link_libraries(Launcher PRIVATE
     Qt${QT_VERSION_MAJOR}::Core
     Qt${QT_VERSION_MAJOR}::Gui
-    Qt${QT_VERSION_MAJOR}::Widgets)
+    Qt${QT_VERSION_MAJOR}::Widgets
+    glfw)
 
-target_compile_options(Launcher PRIVATE -Wall -Wextra)
+if(NOT MSVC)
+    target_compile_options(Launcher PRIVATE -Wall -Wextra)
+endif()
 
 # Deploy layout: the launcher binary sits next to the ELF game binary. The
 # background/ font assets are copied alongside at a fixed relative path.
@@ -44,6 +65,12 @@ add_custom_command(TARGET Launcher POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/PZS3US2.afl"
         "$<TARGET_FILE_DIR:Launcher>/assets/PZS3US2.afl"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/background.png"
+        "$<TARGET_FILE_DIR:Launcher>/assets/background.png"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.png"
+        "$<TARGET_FILE_DIR:Launcher>/assets/icon.png"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/NOTICE"
         "$<TARGET_FILE_DIR:Launcher>/assets/NOTICE")
