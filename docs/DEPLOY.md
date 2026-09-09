@@ -44,6 +44,7 @@ Python script that hosts the build pipeline (and is the base for Windows).
 |---|---|---|
 | `build_and_deploy.sh` | Linux | Interactive build + deploy. Asks for the ISO and output dir, runs the full `setup.py` pipeline, bundles the runner's `ldd` library closure into `OUT/lib`, renames the runner to `bt3-runner`, builds the launcher (Qt 6 + GLFW, pulled via FetchContent), copies the release assets and writes `install game.sh`. |
 | `games/bt3/setup.py` | Both (Windows experimental) | The build pipeline: extract/verify ISO, build the recompiler, generate ~7,800 runner sources, apply patches, build the runner. Also has `--deploy` to assemble the playable tree. |
+| `build_and_deploy_macos.sh` | macOS (experimental) | Interactive build + deploy for macOS: runs the same `setup.py` pipeline, then assembles a self-contained `.app` (relocated dylibs, `Info.plist`, ad-hoc signing) via `tools/macos/deploy.py`. |
 | `tools/release/package.sh` | Linux | Wrap a finished deploy tree into `BT3-Recomp-x86_64.tar.gz` + `.sha256`. This is the only artifact that leaves the machine. |
 
 ## Build + deploy (Linux)
@@ -90,6 +91,50 @@ the launcher builds with MSVC/Clang (Qt 6 + GLFW), the DLL closure is copied to
 the output dir, and the tree is zipped instead of a tarball. No
 `LD_LIBRARY_PATH` games are needed — Windows resolves the bundled DLLs from the
 executable's own directory.
+
+## macOS .app (experimental)
+
+Use a Mac with Xcode Command Line Tools and `brew install cmake ninja pkg-config ffmpeg qt`.
+The Linux self-extracting ELF script is not used on macOS.
+
+```sh
+./build_and_deploy_macos.sh --iso /path/game.iso --jobs 3
+# Reuse the generated sources and rebuild into a new output path:
+./build_and_deploy_macos.sh --skip-setup --output /path/BT3-Recomp-new.app
+# Package existing runner + Launcher.app without rebuilding:
+./build_and_deploy_macos.sh --skip-build --output /path/BT3-Recomp-test.app
+```
+
+Output defaults to `build/macos-dist/BT3-Recomp.app`. An existing destination is
+rejected so a failed build cannot overwrite a working app. `PS2X_BUILD_DIR` selects
+an alternate build directory. Build each CPU architecture separately; Universal 2
+is not supported by the shared SIMD configuration.
+
+The script stages the launcher and `bt3-runner` in `Contents/MacOS`, assets in
+`Contents/Resources`, and uses `macdeployqt` to collect dylibs, Qt frameworks and
+plugins (including Cocoa). It checks architectures, rejects external absolute
+library paths, checks the minimum OS versions in Mach-O load commands, then signs
+inside out with an ad-hoc identity and verifies the bundle. The destination appears
+only after these steps succeed. No game files are embedded in the app.
+
+`--deployment-target VERSION` (or `MACOSX_DEPLOYMENT_TARGET`) controls the declared
+minimum macOS version. The default is the build Mac's version. Lowering this flag
+cannot make Homebrew binaries built for a newer OS compatible: supply dependencies
+built for the chosen floor. Developer ID signing, notarization and clean-machine
+validation are separate release steps, not performed by this script.
+
+At first launch, select the USA ISO in the install wizard. Mutable files live in
+`~/Library/Application Support/BT3-Recomp/`:
+
+- `data/`: verified ELF and files extracted from the disc.
+- `savedata/`: memory cards, settings and per-player bindings.
+- `textures/`, `mods/`, `logs/`: replacements, mods and diagnostics.
+
+The launcher keeps reading fonts and other bundled assets from Resources. Gamepad
+capture/testing in the launcher is unavailable outside Linux; use the in-game
+settings overlay. The EE sampling profiler is unavailable on macOS; the phase
+profiler (`PS2X_GUESTPROF=1`) uses the native monotonic counter. OpenGL uses the
+existing fallbacks for unsupported persistent-buffer and texture-barrier extensions.
 
 ## `setup.py` flags
 

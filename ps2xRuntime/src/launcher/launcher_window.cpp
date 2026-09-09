@@ -1,3 +1,4 @@
+#include "app_paths.h"
 #include "launcher_window.h"
 
 #include "dbz_theme.h"
@@ -14,6 +15,7 @@
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
+#include <QMessageBox>
 #include <QPainter>
 #include <QProcess>
 #include <QPushButton>
@@ -50,8 +52,8 @@ LauncherWindow::LauncherWindow(QWidget *parent)
     setMinimumSize(700, 420);
 
     // The launcher lives in the deploy root; savedata/ is the shared settings dir.
-    m_savedataDir = QDir(QApplication::applicationDirPath()).filePath(QStringLiteral("savedata"));
-    m_dataDir = QDir(QApplication::applicationDirPath()).filePath(QStringLiteral("data"));
+    m_savedataDir = QDir(apppaths::userRoot()).filePath(QStringLiteral("savedata"));
+    m_dataDir = QDir(apppaths::userRoot()).filePath(QStringLiteral("data"));
 
     // Resolve the game ELF next to the launcher binary.
     const QDir appDir(QApplication::applicationDirPath());
@@ -71,12 +73,12 @@ LauncherWindow::LauncherWindow(QWidget *parent)
     }
 
     // Background: deploy assets/background.png if present, else a DBZ gradient.
-    const QString bg = appDir.filePath(QStringLiteral("assets/background.png"));
+    const QString bg = QDir(apppaths::assets()).filePath(QStringLiteral("background.png"));
     if (QFile::exists(bg))
         m_bgPath = bg;
 
     // Window/taskbar icon from the same asset tree.
-    const QIcon appIcon(appDir.filePath(QStringLiteral("assets/icon.png")));
+    const QIcon appIcon(QDir(apppaths::assets()).filePath(QStringLiteral("icon.png")));
     if (!appIcon.isNull())
         setWindowIcon(appIcon);
 
@@ -198,7 +200,15 @@ void LauncherWindow::onPlayClicked()
     const QDir appDir(QApplication::applicationDirPath());
 
     QProcess *proc = new QProcess(nullptr);
-    proc->setWorkingDirectory(appDir.absolutePath());
+    proc->setWorkingDirectory(apppaths::userRoot());
+#if defined(Q_OS_MACOS)
+    // Detached GUI applications do not inherit a useful terminal on macOS.
+    // Keep the most recent runner diagnostics where users can attach them to a report.
+    const QString logsDir = QDir(apppaths::userRoot()).filePath(QStringLiteral("logs"));
+    QDir().mkpath(logsDir);
+    proc->setStandardOutputFile(QDir(logsDir).filePath(QStringLiteral("game-latest.out")));
+    proc->setStandardErrorFile(QDir(logsDir).filePath(QStringLiteral("game-latest.log")));
+#endif
 
     if (m_plainRunner)
     {
@@ -209,15 +219,17 @@ void LauncherWindow::onPlayClicked()
 #else
         proc->setProgram(appDir.filePath(QStringLiteral("bt3-runner")));
 #endif
-        const QString dataDir = appDir.filePath(QStringLiteral("data"));
+        const QString dataDir = m_dataDir;
         proc->setArguments({QDir(dataDir).filePath(QStringLiteral("SLUS_216.78"))});
         auto env = QProcessEnvironment::systemEnvironment();
         // [deploy] Anchor the runner's savedata/assets/fonts (and bt3_settings.ini)
         // at the deploy root -- where the launcher wrote them -- not data/.
-        env.insert(QStringLiteral("PS2X_EXEDIR"), appDir.absolutePath());
-#ifndef _WIN32
+        env.insert(QStringLiteral("PS2X_EXEDIR"), apppaths::userRoot());
+        env.insert(QStringLiteral("PS2X_ASSETDIR"), apppaths::assets());
+#if !defined(_WIN32) && !defined(Q_OS_MACOS)
         // position-independent loader search is a POSIX concept; Windows
-        // resolves the bundled dlls from the executable's own directory.
+        // resolves the bundled dlls from the executable's own directory, and
+        // the macOS bundle resolves its dylibs through @rpath.
         env.insert(QStringLiteral("LD_LIBRARY_PATH"), appDir.filePath(QStringLiteral("lib")));
 #endif
         proc->setProcessEnvironment(env);
@@ -227,7 +239,12 @@ void LauncherWindow::onPlayClicked()
         // Launch detached: the game extracts + execs its own inner runner.
         proc->setProgram(m_gameElf);
     }
-    proc->startDetached();
+    if (!proc->startDetached())
+    {
+        QMessageBox::critical(this, QStringLiteral("Could not start the game"), proc->errorString());
+        proc->deleteLater();
+        return;
+    }
 
     // The launcher's job is done: close this window (the game runs on its own).
     close();

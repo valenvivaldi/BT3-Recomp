@@ -1,5 +1,6 @@
 #include "tab_bindings.h"
 
+#include "app_paths.h"
 #include "input_reader.h"
 
 #include <QApplication>
@@ -252,7 +253,7 @@ bool BindingsTab::save()
 std::string BindingsTab::padconfPath() const
 {
     // Legacy single pad.conf (deploy root), kept for migration.
-    const QDir dir(QApplication::applicationDirPath());
+    const QDir dir(apppaths::userRoot());
     return dir.filePath(QStringLiteral("pad.conf")).toStdString();
 }
 
@@ -260,7 +261,7 @@ std::string BindingsTab::padconfLegacyPath() const { return padconfPath(); }
 
 std::string BindingsTab::playerConfigPath(int p) const
 {
-    const QDir dir(QApplication::applicationDirPath());
+    const QDir dir(apppaths::userRoot());
     return dir.filePath(QStringLiteral("savedata/pad_p%1.conf").arg(p + 1)).toStdString();
 }
 
