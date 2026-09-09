@@ -43,12 +43,17 @@ Pruebas efectuadas hasta ahora en Apple Silicon, macOS 26.2, AppleClang 17:
 - Verificación SHA-256 de la ISO USA y generación completa de runner y overlay.
 - Compilación del runtime y del launcher Qt; arranque breve del launcher, también
   desde un directorio de trabajo distinto al del bundle.
+- Bundle ARM64 autónomo de 178 MB: dependencias externas auditadas, firma ad-hoc
+  verificada con `codesign --verify --deep --strict` y plugin Cocoa incluido.
+- Ejecución del runner empaquetado con los datos extraídos de `SLUS-21678`: inicia
+  Cocoa/OpenGL 4.1 sobre Apple M1 Pro, Core Audio, carga el ELF y entra al bucle
+  del juego; el cierre solicitado termina limpiamente.
 - Veinte generaciones paralelas del mapa de gaps coinciden byte a byte con la
   generación secuencial (`tools/tests/recomp_parallel_smoke.py`).
 - Pruebas MMI/SIMD contra referencias escalares: pasan en ARM64 y en x86-64 bajo
   Rosetta. Contador de fases y stubs también probados en ambas arquitecturas.
 
-La compilación completa del runner y la validación gráfica están en curso.
+La compilación completa del runner y la prueba gráfica básica pasan en Apple Silicon.
 La paridad visual con un Mac Intel físico, el rendimiento en combate, el audio y
 los mandos reales requieren validación adicional. El backend Metal/MoltenVK y el
 profiler EE nativo de la fase opcional no se implementaron.

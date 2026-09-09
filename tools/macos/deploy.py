@@ -42,8 +42,11 @@ def audit(app, minimum):
         arches = set(output("lipo", "-archs", path).split())
         if not required_arches.issubset(arches):
             raise RuntimeError(f"Architecture mismatch in {path}: {arches}, runner needs {required_arches}")
+        install_ids = set(output("otool", "-D", path).splitlines()[1:])
         for line in output("otool", "-L", path).splitlines()[1:]:
             dep = line.strip().split(" (compatibility version", 1)[0]
+            if dep in install_ids:
+                continue
             if dep.startswith("/") and not dep.startswith(("/usr/lib/", "/System/Library/")):
                 raise RuntimeError(f"Unbundled dependency in {path}: {dep}")
         lines = output("otool", "-l", path).splitlines()
@@ -117,7 +120,27 @@ def main():
         info = plistlib.loads(plist.read_bytes())
         info["LSMinimumSystemVersion"] = args.deployment_target
         plist.write_bytes(plistlib.dumps(info))
-        run(deployqt, app, f"-executable={bundled_runner}", "-always-overwrite")
+        # Homebrew's Qt plugins use @rpath for non-Qt dependencies. macdeployqt
+        # only searches Qt's own prefix by default, so provide every installed
+        # formula lib directory and let it close the complete dependency graph.
+        brew_opt = Path(output("brew", "--prefix")) / "opt"
+        library_paths = sorted(
+            path for formula in brew_opt.iterdir()
+            if (path := formula / "lib").is_dir()
+        )
+        deploy_args = [deployqt, app, f"-executable={bundled_runner}",
+                       "-always-overwrite", "-no-codesign", "-no-plugins"]
+        deploy_args += [f"-libpath={path}" for path in library_paths]
+        run(*deploy_args)
+        # The launcher only needs Qt's Cocoa platform plugin. Copying every
+        # installed plugin drags WebEngine/PDF/virtual-keyboard dependency
+        # trees into an otherwise small Widgets application.
+        cocoa_src = qt / "share/qt/plugins/platforms/libqcocoa.dylib"
+        cocoa_dst = app / "Contents/PlugIns/platforms/libqcocoa.dylib"
+        cocoa_dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(cocoa_src, cocoa_dst)
+        run("install_name_tool", "-rpath", "@loader_path/../../../../lib",
+            "@loader_path/../../Frameworks", cocoa_dst)
         binaries = audit(app, args.deployment_target)
         # Sign inside out, including the non-Qt runner and every deployed dylib.
         for binary in sorted(binaries, key=lambda p: len(p.parts), reverse=True):
