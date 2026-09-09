@@ -2173,6 +2173,57 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
     ctx->pc = targetPc;
     const bool isCall = (kind == GuestBranchKind::DirectCall || kind == GuestBranchKind::IndirectCall);
 
+#if defined(__APPLE__)
+    // Capture on the executing guest thread: never inspect a live R5900Context
+    // from the presentation thread. Bounded history and one dump per stall.
+    static const bool hangTrace = [] { const char *v = std::getenv("PS2X_HANGTRACE"); return !v || v[0] != '0'; }();
+    if (hangTrace && ctx == &m_cpuContext)
+    {
+        extern std::atomic<uint64_t> g_bt3FrameCount;
+        struct Edge { uint32_t from, to; };
+        static thread_local Edge history[64]{};
+        static thread_local uint64_t branches = 0, lastFrame = 0;
+        static thread_local auto progress = std::chrono::steady_clock::now();
+        static thread_local bool reported = false;
+        history[branches++ % 64] = {sourcePc, targetPc};
+        if ((branches & 16383u) == 0)
+        {
+            const auto now = std::chrono::steady_clock::now();
+            const auto frame = g_bt3FrameCount.load(std::memory_order_relaxed);
+            if (frame != lastFrame) { lastFrame = frame; progress = now; reported = false; }
+            if (frame && !reported && now - progress >= std::chrono::seconds(3))
+            {
+                reported = true;
+                std::ostringstream out;
+                out << "[hangtrace] no guest frames for >=3s; frame=" << frame
+                    << " branches=" << branches << " dma-starts=" << m_memory.dmaStartCount()
+                    << " (stall observation, not a deadlock diagnosis)\n";
+                out << "[hangtrace] recent edges (oldest first):" << std::hex;
+                for (unsigned i = 0; i < 64; ++i) {
+                    const auto &e = history[(branches + i) % 64];
+                    out << " " << e.from << "->" << e.to;
+                }
+                out << "\n[hangtrace] GPR low32:";
+                for (unsigned i = 0; i < 32; ++i)
+                    out << " r" << std::dec << i << "=" << std::hex << static_cast<uint32_t>(_mm_extract_epi32(ctx->r[i], 0));
+                out << std::dec << '\n';
+                // Avoid blocking the diagnostic behind a scheduler lock.
+                std::unique_lock<std::mutex> lock(m_schedMutex, std::try_to_lock);
+                if (lock.owns_lock()) {
+                    out << "[hangtrace] scheduler current=" << m_schedCurrent;
+                    for (const auto &kv : m_schedThreads)
+                        out << " tid=" << kv.first << " present=" << kv.second->present
+                            << " blocked=" << kv.second->blocked << " blockPc=" << std::hex
+                            << kv.second->blockPc << " blockRa=" << kv.second->blockRa << std::dec;
+                    lock.unlock();
+                    out << '\n';
+                } else out << "[hangtrace] scheduler snapshot unavailable (busy)\n";
+                std::cerr << out.str() << std::flush;
+            }
+        }
+    }
+#endif
+
     // SUPER-TRACE tap (PS2X_SUPERTRACE + F10): see the rig above dispatchGuestBranch.
     {
         static const bool s_stOn = []() { const char *v = std::getenv("PS2X_SUPERTRACE"); return v && v[0] && v[0] != '0'; }();
