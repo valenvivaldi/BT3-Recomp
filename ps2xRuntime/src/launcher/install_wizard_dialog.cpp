@@ -298,8 +298,11 @@ void InstallWizardDialog::onBrowse()
 {
     static const QString kFilter =
         QStringLiteral("Game disc dump (*.iso *.img *.rar *.7z *.zip *.tar *.tar.gz);;All files (*)");
+    // Qt's own dialog (not the native GTK/portal one) so the app's DBZ theme
+    // applies: lighter slate background + white text, readable over dark desks.
     const QString path = QFileDialog::getOpenFileName(
-        this, QStringLiteral("Select your own game disc dump"), QDir::homePath(), kFilter);
+        this, QStringLiteral("Select your own game disc dump"), QDir::homePath(), kFilter,
+        nullptr, QFileDialog::DontUseNativeDialog);
     if (path.isEmpty())
         return;
     m_selected->setText(QDir::toNativeSeparators(path));

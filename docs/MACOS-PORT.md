@@ -217,22 +217,20 @@ de B2; se lista aparte para que no se olvide al hacer grep solo en cabeceras.
 
 **Esfuerzo:** incluido en B2.
 
-### B4 — El launcher Qt no tiene ninguna guarda de plataforma
+### B4 — El launcher Qt no tenía ninguna guarda de plataforma *(resuelto aguas arriba)*
 
-**Ficheros:**
+**Estado:** ya no hace falta nada aquí. El diagnóstico original era que
+`src/launcher/evdev_reader.cpp` y `src/launcher/tab_bindings.cpp` incluían `<linux/input.h>` sin
+guardas y que `src/launcher/CMakeLists.txt` los metía en la compilación con un `file(GLOB *.cpp)`,
+de modo que el launcher nunca había compilado fuera de Linux.
 
-- `src/launcher/evdev_reader.cpp:4-5` — `<linux/input.h>`, `<sys/ioctl.h>`
-- `src/launcher/tab_bindings.cpp:5` — `<linux/input.h>`
+El puerto de input multiplataforma de upstream (`input_reader.{h,cpp}`, GLFW para joysticks y
+eventos de teclado de Qt) eliminó `evdev_reader` por completo y con él la raíz del problema: no
+queda un solo `linux/input.h` ni `/dev/input` en el launcher, y el mismo código compila en Linux,
+Windows y macOS. Este puerto ya no toca esos ficheros; la solución de upstream es mejor que el
+stub «no disponible» que se había previsto aquí.
 
-**Qué rompe:** includes incondicionales, y `src/launcher/CMakeLists.txt:16` hace
-`file(GLOB *.cpp)`, así que entran a la compilación siempre. En los 37 ficheros del launcher hay
-**cero** apariciones de `__linux__`, `_WIN32` o `__APPLE__`: nunca se ha compilado fuera de Linux.
-
-**Arreglo:** excluir ambos del glob cuando `APPLE`, más un stub de `evdev_reader.h` que devuelva
-«no disponible». La pestaña de bindings pierde la lectura nativa de eventos; Qt6 en sí es
-multiplataforma y el resto del launcher (wizard, settings, AFS, ISO9660) es portable.
-
-**Esfuerzo:** ≈3-4 h, incluyendo la primera compilación real con Qt6 de Homebrew.
+**Esfuerzo:** 0 — resuelto aguas arriba.
 
 > Verificado **ausente** en todo el árbol (excluyendo `thirdparty/`): ensamblador inline,
 > `__builtin_ia32_*`, `__cpuid`, `mmap`, `VirtualAlloc`, `dlopen`. El único `sys/syscall.h` es el de
@@ -241,6 +239,12 @@ multiplataforma y el resto del launcher (wizard, settings, AFS, ISO9660) es port
 ---
 
 ## 4. Empaquetado: aquí está el trabajo de verdad
+
+> **Nota de actualización.** Upstream pasó desde entonces a distribuir una **carpeta portable**
+> idéntica en Linux, Windows y macOS, en lugar del ELF autoextraíble. La tabla de abajo se
+> conserva porque el análisis de cada dependencia de Linux sigue siendo válido, y porque explica
+> por qué en macOS la ruta es un bundle `.app`; lo que ya no aplica es el stub autoextraíble.
+
 
 El formato de distribución en Linux es **un único ELF autoextraíble**:
 `[stub estático][payload tar+zstd][footer de 32 B]`. En el primer arranque se descomprime en
