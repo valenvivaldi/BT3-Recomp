@@ -188,6 +188,14 @@ void LauncherWindow::onPlayClicked()
 
     QProcess *proc = new QProcess(this);
     proc->setWorkingDirectory(apppaths::userRoot());
+#if defined(Q_OS_MACOS)
+    // Detached GUI applications do not inherit a useful terminal on macOS.
+    // Keep the most recent runner diagnostics where users can attach them to a report.
+    const QString logsDir = QDir(apppaths::userRoot()).filePath(QStringLiteral("logs"));
+    QDir().mkpath(logsDir);
+    proc->setStandardOutputFile(QDir(logsDir).filePath(QStringLiteral("game-latest.out")));
+    proc->setStandardErrorFile(QDir(logsDir).filePath(QStringLiteral("game-latest.log")));
+#endif
 
     if (m_plainRunner)
     {
