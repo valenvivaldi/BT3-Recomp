@@ -1,5 +1,6 @@
 #include "evdev_reader.h"
 
+#if defined(__linux__)
 #include <fcntl.h>
 #include <linux/input.h>
 #include <sys/ioctl.h>
@@ -10,6 +11,7 @@
 
 namespace evin
 {
+    void Reader::close() { if (m_fd >= 0) { ::close(m_fd); m_fd = -1; } }
     namespace
     {
         bool bitIs(const unsigned long *bm, int code)
@@ -273,3 +275,16 @@ namespace evin
         return (float)(raw - mn) / (float)(mx - mn) * 2.0f - 1.0f;
     }
 } // namespace evin
+
+#else
+namespace evin
+{
+    std::vector<DeviceInfo> listDevices() { return {}; }
+    std::string pickKeyboardNode(const std::vector<DeviceInfo> &) { return {}; }
+    int abscodeToAxis(int) { return -1; }
+    bool Reader::open(const std::string &) { return false; }
+    void Reader::close() {}
+    bool Reader::update() { return false; }
+    int Reader::takeLastKey() { return -1; }
+}
+#endif

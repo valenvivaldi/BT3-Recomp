@@ -1,8 +1,11 @@
+#include "app_paths.h"
 #include "tab_bindings.h"
 
 #include "evdev_reader.h"
 
+#if defined(__linux__)
 #include <linux/input.h>
+#endif
 
 #include <QApplication>
 #include <QComboBox>
@@ -72,6 +75,7 @@ namespace
     // in pad.conf and polls with IsKeyDown(value), so capture must translate.
     int evKeyToRaylib(int code)
     {
+#if defined(__linux__)
         static const struct { int ev; int rl; } map[] = {
             {KEY_ESC, 256}, {KEY_ENTER, 257}, {KEY_TAB, 258}, {KEY_BACKSPACE, 259},
             {KEY_SPACE, 32},
@@ -92,6 +96,9 @@ namespace
         for (auto &m : map)
             if (m.ev == code)
                 return m.rl;
+#else
+        (void)code;
+#endif
         return 0;
     }
 
@@ -168,6 +175,7 @@ BindingsTab::BindingsTab(QWidget *parent)
         auto *cur = new QTableWidgetItem(QStringLiteral("None"));
         m_table->setItem(row, 1, cur);
         auto *btn = new QPushButton(QStringLiteral("Set"));
+        btn->setEnabled(evin::available);
         btn->setProperty("row", row);
         btn->setMinimumWidth(64);
         QFont f = btn->font();
@@ -232,7 +240,7 @@ bool BindingsTab::save()
 std::string BindingsTab::padconfPath() const
 {
     // Legacy single pad.conf (deploy root), kept for migration.
-    const QDir dir(QApplication::applicationDirPath());
+    const QDir dir(apppaths::userRoot());
     return dir.filePath(QStringLiteral("pad.conf")).toStdString();
 }
 
@@ -240,7 +248,7 @@ std::string BindingsTab::padconfLegacyPath() const { return padconfPath(); }
 
 std::string BindingsTab::playerConfigPath(int p) const
 {
-    const QDir dir(QApplication::applicationDirPath());
+    const QDir dir(apppaths::userRoot());
     return dir.filePath(QStringLiteral("savedata/pad_p%1.conf").arg(p + 1)).toStdString();
 }
 
@@ -310,6 +318,11 @@ void BindingsTab::refreshDevices()
     m_device->addItem(QStringLiteral("(auto)"));
     m_device->addItem(QStringLiteral("Keyboard"));
     // Enumerate all gamepads (matching the runtime's availableGamepads()).
+    // Without native enumeration retain the runtime's logical gamepad slots,
+    // including previously saved assignments.
+    if (!evin::available)
+        for (int slot = 0; slot < 16; ++slot)
+            m_device->addItem(QStringLiteral("Gamepad %1").arg(slot));
     int g = 0;
     for (auto &d : m_filteredDevices)
     {
@@ -330,7 +343,8 @@ void BindingsTab::refreshDevices()
         onDeviceChanged(m_device->currentIndex());
     else
         openCaptureDevice();
-    setStatus(QStringLiteral("Devices refreshed."));
+    setStatus(evin::available ? QStringLiteral("Devices refreshed.")
+        : QStringLiteral("Input capture is unavailable here. Configure bindings in the game."));
 }
 
 void BindingsTab::onDeviceChanged(int)

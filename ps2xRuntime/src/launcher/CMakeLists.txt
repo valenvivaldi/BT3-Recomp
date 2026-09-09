@@ -17,6 +17,26 @@ file(GLOB LAUNCHER_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 
 add_executable(Launcher ${LAUNCHER_SOURCES})
+if(APPLE)
+    if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+        execute_process(COMMAND sw_vers -productVersion
+            OUTPUT_VARIABLE CMAKE_OSX_DEPLOYMENT_TARGET OUTPUT_STRIP_TRAILING_WHITESPACE
+            RESULT_VARIABLE _macos_version_result)
+        if(NOT _macos_version_result EQUAL 0)
+            message(FATAL_ERROR "Could not determine macOS version; set CMAKE_OSX_DEPLOYMENT_TARGET")
+        endif()
+    endif()
+    set_target_properties(Launcher PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_BUNDLE_NAME "BT3-Recomp"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "org.bt3recomp.launcher"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1.0"
+        MACOSX_BUNDLE_BUNDLE_VERSION "1"
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in")
+    set(LAUNCHER_ASSET_DIR "$<TARGET_BUNDLE_CONTENT_DIR:Launcher>/Resources/assets")
+else()
+    set(LAUNCHER_ASSET_DIR "$<TARGET_FILE_DIR:Launcher>/assets")
+endif()
 
 target_include_directories(Launcher PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -34,16 +54,16 @@ target_compile_options(Launcher PRIVATE -Wall -Wextra)
 # background/ font assets are copied alongside at a fixed relative path.
 add_custom_command(TARGET Launcher POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory
-        "$<TARGET_FILE_DIR:Launcher>/assets/fonts"
+        "${LAUNCHER_ASSET_DIR}/fonts"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/RussoOne-Regular.ttf"
-        "$<TARGET_FILE_DIR:Launcher>/assets/fonts/RussoOne-Regular.ttf"
+        "${LAUNCHER_ASSET_DIR}/fonts/RussoOne-Regular.ttf"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/PZS3US1.afl"
-        "$<TARGET_FILE_DIR:Launcher>/assets/PZS3US1.afl"
+        "${LAUNCHER_ASSET_DIR}/PZS3US1.afl"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/PZS3US2.afl"
-        "$<TARGET_FILE_DIR:Launcher>/assets/PZS3US2.afl"
+        "${LAUNCHER_ASSET_DIR}/PZS3US2.afl"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/NOTICE"
-        "$<TARGET_FILE_DIR:Launcher>/assets/NOTICE")
+        "${LAUNCHER_ASSET_DIR}/NOTICE")

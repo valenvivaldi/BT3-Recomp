@@ -215,7 +215,10 @@ ControllersTab::ControllersTab(std::array<padconf::Player, 2> *shared, QWidget *
     m_timer = new QTimer(this);
     m_timer->setInterval(16);
     connect(m_timer, &QTimer::timeout, this, &ControllersTab::pollGamepad);
-    m_timer->start();
+    if (evin::available)
+        m_timer->start();
+    else
+        m_axisReadout->setText(QStringLiteral("Gamepad testing is available in the game."));
 }
 
 void ControllersTab::onDeadzone(int v)
@@ -244,6 +247,11 @@ void ControllersTab::refreshDevices()
 
     m_device->addItem(QStringLiteral("(auto)"));
     m_device->addItem(QStringLiteral("Keyboard"));
+    // Without native enumeration retain the runtime's logical gamepad slots,
+    // including previously saved assignments.
+    if (!evin::available)
+        for (int slot = 0; slot < 16; ++slot)
+            m_device->addItem(QStringLiteral("Gamepad %1").arg(slot));
     int g = 0;
     for (auto &d : m_filteredDevices)
     {

@@ -12,7 +12,8 @@ image** — this repository contains no game code, assets, or media.
 
 - **Your own legally obtained BT3 USA ISO** (SLUS-21678). Other regions are not
   supported — the committed function maps are for the USA executable.
-- Linux or Windows (experimental), x86-64 CPU with SSE4.1.
+- Linux or Windows (experimental), x86-64 CPU with SSE4.1. Experimental macOS
+  builds support native arm64 and x86-64 separately; see [the port notes](docs/MACOS-PORT.md).
 - ~16 GB RAM and ~10 GB free disk for the build.
 - Packages: `cmake`, GCC or Clang with C++20, `python3`, `rsync`,
   `bsdtar` (libarchive) or `7z`, pkg-config, the FFmpeg development libraries,
@@ -65,6 +66,22 @@ recompiler, generates ~7,800 C++ sources from the game's executable and overlay,
 applies the committed patches, and builds the final binary. The compile is quick
 on a modern machine (a few minutes at `-j16`); the conservative default is `-j3` —
 pass your core count with `--jobs N` if you have 8 GB+ of free RAM.
+
+**macOS (experimental):** install the Xcode Command Line Tools and Homebrew dependencies:
+
+```sh
+brew install cmake ninja pkg-config ffmpeg qt
+./build_and_deploy_macos.sh --iso /path/to/bt3-usa.iso --jobs 3
+open build/macos-dist/BT3-Recomp.app
+```
+
+The app's installation wizard reads your USA ISO. Game files, settings and saves
+live in `~/Library/Application Support/BT3-Recomp/`, outside the signed bundle.
+The script defaults to the build Mac's OS version as its minimum and checks the
+bundled libraries against it. Homebrew bottles can require a recent macOS release.
+The signature is local/ad-hoc; Developer ID signing and notarization are not included.
+For development without a bundle, use `python3 games/bt3/setup.py /path/to/bt3-usa.iso --jobs 3`.
+See [deployment details](docs/DEPLOY.md#macos-app-experimental) for rebuilds and limitations.
 
 ## Run
 

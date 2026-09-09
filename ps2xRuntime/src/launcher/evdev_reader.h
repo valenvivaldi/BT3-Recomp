@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-#include <unistd.h>
 
 // Minimal evdev reader for the launcher's gamepad test + bind capture. Mirrors
 // the runtime's pad_evdev_linux.cpp behaviour but without raylib: enumerates
@@ -12,6 +11,11 @@
 // logical layout raylib uses for gamepads (buttons 0..31, axes 0..5).
 namespace evin
 {
+#if defined(__linux__)
+    inline constexpr bool available = true;
+#else
+    inline constexpr bool available = false;
+#endif
     // raylib-style button indices for the standard controller layout.
     enum : int
     {
@@ -67,7 +71,7 @@ namespace evin
     {
     public:
         bool open(const std::string &node);
-        void close() { if (m_fd >= 0) { ::close(m_fd); m_fd = -1; } }
+        void close();
         bool isOpen() const { return m_fd >= 0; }
         bool update(); // drain pending events; true if a key was pressed
 

@@ -1,3 +1,4 @@
+#include "app_paths.h"
 #include "launcher_window.h"
 
 #include "dbz_theme.h"
@@ -14,6 +15,7 @@
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
+#include <QMessageBox>
 #include <QPainter>
 #include <QProcess>
 #include <QPushButton>
@@ -50,8 +52,8 @@ LauncherWindow::LauncherWindow(QWidget *parent)
     setMinimumSize(700, 420);
 
     // The launcher lives in the deploy root; savedata/ is the shared settings dir.
-    m_savedataDir = QDir(QApplication::applicationDirPath()).filePath(QStringLiteral("savedata"));
-    m_dataDir = QDir(QApplication::applicationDirPath()).filePath(QStringLiteral("data"));
+    m_savedataDir = QDir(apppaths::userRoot()).filePath(QStringLiteral("savedata"));
+    m_dataDir = QDir(apppaths::userRoot()).filePath(QStringLiteral("data"));
 
     // Resolve the game ELF next to the launcher binary.
     const QDir appDir(QApplication::applicationDirPath());
@@ -81,12 +83,12 @@ LauncherWindow::LauncherWindow(QWidget *parent)
     }
 
     // Background: deploy assets/background.png if present, else a DBZ gradient.
-    const QString bg = appDir.filePath(QStringLiteral("assets/background.png"));
+    const QString bg = QDir(apppaths::assets()).filePath(QStringLiteral("background.png"));
     if (QFile::exists(bg))
         m_bgPath = bg;
 
     // Window/taskbar icon from the same asset tree.
-    const QIcon appIcon(appDir.filePath(QStringLiteral("assets/icon.png")));
+    const QIcon appIcon(QDir(apppaths::assets()).filePath(QStringLiteral("icon.png")));
     if (!appIcon.isNull())
         setWindowIcon(appIcon);
 
@@ -184,21 +186,24 @@ void LauncherWindow::onPlayClicked()
 
     const QDir appDir(QApplication::applicationDirPath());
 
-    QProcess *proc = new QProcess(nullptr);
-    proc->setWorkingDirectory(appDir.absolutePath());
+    QProcess *proc = new QProcess(this);
+    proc->setWorkingDirectory(apppaths::userRoot());
 
     if (m_plainRunner)
     {
         // Direct runner mode: point it at the extracted boot ELF and the
         // bundled library tree; it is already the real ps2EntryRunner.
         proc->setProgram(appDir.filePath(QStringLiteral("bt3-runner")));
-        const QString dataDir = appDir.filePath(QStringLiteral("data"));
+        const QString dataDir = m_dataDir;
         proc->setArguments({QDir(dataDir).filePath(QStringLiteral("SLUS_216.78"))});
         auto env = QProcessEnvironment::systemEnvironment();
         // [deploy] Anchor the runner's savedata/assets/fonts (and bt3_settings.ini)
         // at the deploy root -- where the launcher wrote them -- not data/.
-        env.insert(QStringLiteral("PS2X_EXEDIR"), appDir.absolutePath());
+        env.insert(QStringLiteral("PS2X_EXEDIR"), apppaths::userRoot());
+        env.insert(QStringLiteral("PS2X_ASSETDIR"), apppaths::assets());
+#if defined(Q_OS_LINUX)
         env.insert(QStringLiteral("LD_LIBRARY_PATH"), appDir.filePath(QStringLiteral("lib")));
+#endif
         proc->setProcessEnvironment(env);
     }
     else
@@ -206,7 +211,12 @@ void LauncherWindow::onPlayClicked()
         // Launch detached: the game extracts + execs its own inner runner.
         proc->setProgram(m_gameElf);
     }
-    proc->startDetached();
+    if (!proc->startDetached())
+    {
+        QMessageBox::critical(this, QStringLiteral("Could not start the game"), proc->errorString());
+        proc->deleteLater();
+        return;
+    }
 
     // The launcher's job is done: close this window (the game runs on its own).
     close();

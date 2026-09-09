@@ -5289,7 +5289,7 @@ void PS2Runtime::run()
                 if (gprof::g_on)
                 {   // [guestprof] exclusive phase time on the guest thread(s), ms per second; tsc calibrated over this interval
                     static uint64_t s_lastTsc = 0, s_lastAcc[gprof::NPHASE] = {0};
-                    const uint64_t tsc = __rdtsc();
+                    const uint64_t tsc = gprof::ticks();
                     if (s_lastTsc)
                     {
                         const double nsPerTick = (dt * 1.0e9) / (double)(tsc - s_lastTsc);

@@ -1,3 +1,4 @@
+#include "app_paths.h"
 #include "dbz_theme.h"
 
 #include <QApplication>
@@ -178,8 +179,8 @@ namespace dbz
 
     QString loadHudFont()
     {
-        QDir appDir(QApplication::applicationDirPath());
-        const QString fontPath = appDir.filePath("assets/fonts/RussoOne-Regular.ttf");
+        QDir appDir(apppaths::assets());
+        const QString fontPath = appDir.filePath("fonts/RussoOne-Regular.ttf");
         if (QFile::exists(fontPath))
         {
             const int id = QFontDatabase::addApplicationFont(fontPath);
