@@ -9,10 +9,10 @@
   "vu1_manifest": "games/bt3/work/SLUS_219.78/vu1-generated.json",
   "overlay_map": "games/bt3/work/SLUS_219.78/dbzp_functions_usa.csv",
   "required_inputs": [
-    "validate the copied USA function map against the mod's changed code",
-    "validate the generated 9-program VU1 manifest",
-    "validate the copied USA DBZP overlay map and hooks",
+    "derive and validate an EE function map for the mod revision (the current probe copies USA boundaries)",
+    "validate the generated 9-program VU1 manifest against BT4 execution",
+    "derive and validate the DBZ4.BIN overlay map and hooks (the current probe uses DBZP.BIN and USA boundaries)",
     "ported game-specific runtime overrides"
   ],
-  "notes": "The mod ISO contains the usual DBZP.BIN plus DBZ4.BIN. This first probe copies the USA EE and DBZP maps so the generated runner can test binary compatibility; it is not a validated port and has no launcher profile."
+  "notes": "The mod ISO contains DBZP.BIN plus DBZ4.BIN. The experimental runner builds and boots from the mod ELF, loads the IOP modules, and passes DTX/SJX initialisation after registering the region-independent DTX compatibility override. It then remains before the first rendered frame with dma/gif around 1,700 and the guest allocator as the hot path. The EE and overlay maps are still provisional USA copies, so this is not a validated port and has no launcher profile."
 }

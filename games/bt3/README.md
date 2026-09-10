@@ -78,6 +78,14 @@ allocator. Whether that is heavy init allocation or a free list that never
 terminates is the open question; see the variant descriptor for the full list of
 what is still missing.
 
+The `SLUS_219.78` BT4 B14 Rev2 probe also builds and boots far enough to load
+the IOP modules and complete DTX/SJX initialisation. It currently uses copied
+USA EE and DBZP maps, while the ISO also contains a separate `DBZ4.BIN`; after
+about 45–60 seconds it remains before the first rendered frame with DMA/GIF
+around 1,700. This confirms the shared DTX compatibility path but does not yet
+constitute a playable or validated BT4 port. Its current state and required
+inputs are recorded in `variants/SLUS_219.78.json`.
+
 ## Build
 
 ```sh
