@@ -9,8 +9,9 @@
   "vu1_manifest": "games/bt3/variants/SLES_549.45.vu1.json",
   "overlay_map": "games/bt3/work/SLES_549.45/dbzp_functions_splat.csv",
   "required_inputs": [
-    "validation that the splat-derived DBZP overlay map matches PAL runtime hooks",
-    "ported game-specific runtime overrides"
+    "ported BT3 sound-init bypass override (SJX_Init E0100302 'can't create DTX'): applyBt3SoundInitBypass in game_overrides.cpp replaces hardcoded USA guest addresses and is registered for SLUS_216.78 only",
+    "ported BT3 DTX URPC + sceMpeg + NULL packet-list overrides (same, USA-keyed)",
+    "the 14 stub bindings transfer_symbols.py cannot re-base unambiguously"
   ],
   "launcher": {
     "label": "Europe/Australia PAL (SLES-549.45)",
@@ -18,5 +19,5 @@
     "data_dir": "data/SLES_549.45",
     "self_extracting": false
   },
-  "notes": "The boot ELF and its 7-program VU1 manifest are verified against the ELF's VIF MPG stream. The function map and the DBZP overlay map are splat-derived into the ignored per-variant work directory. The overlay is generated with gen_overlay.py --simple: the USA re-entry-label and gap-stitch tables are USA addresses and are not applied."
+  "notes": "The boot ELF, its 7-program VU1 manifest and 167 of 181 recompiler stub bindings are derived for this serial. It boots, initialises video and the kernel, and reaches DMA/GIF activity, then stops in the SJX/SVM sound middleware's SJX_Init with E0100302 'can't create DTX' -- the IOP sound subsystem is stubbed and the override that lets USA fall through is registered for SLUS_216.78 with hardcoded USA guest addresses. Not playable."
 }

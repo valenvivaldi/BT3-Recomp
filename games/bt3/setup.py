@@ -75,6 +75,45 @@ def variant_input(variant: dict, key: str, default: Path | None) -> Path | None:
     return (ROOT / value) if value else default
 
 
+def rebase_stubs(variant: dict, serial: str, elf: Path, function_map: Path,
+                 work: Path, cfg_text: str) -> str:
+    """Re-point config.toml.in's stub bindings from the base variant onto this one.
+
+    [symxfer] The recompiler substitutes its own HLE for a stubbed function, and
+    the binding is `name@0xADDRESS`. Those addresses are the canonical variant's,
+    so reusing them for another serial does not merely miss: an address that
+    happens to start a different function there silently replaces that function
+    with an unrelated stub. Worse, the ones that DO miss leave the game's real
+    library code in place -- and that code talks to an IOP which does not exist,
+    which is why an un-rebased variant hangs in sceSifInitRpc polling for an IOP
+    acknowledgement that never arrives.
+    """
+    base = variant.get("base_serial")
+    if not base:
+        print(f"== {serial} has no base_serial; leaving the stub list untouched")
+        return cfg_text
+    base_variant = load_variants().get(base)
+    base_elf = WORK / base
+    base_map = variant_input(base_variant or {}, "function_map", None)
+    if not base_elf.is_file() or not base_map or not base_map.is_file():
+        die(f"{serial}: rebasing the stub list needs the base variant {base}'s ELF "
+            f"and function map ({base_elf}, {base_map}). Build {base} first, or "
+            f"record a variant stub list of your own.")
+    stubs_out = work / "stubs_rebased.txt"
+    run([sys.executable, HERE / "transfer_symbols.py",
+         "--from-elf", base_elf, "--from-map", base_map,
+         "--to-elf", elf, "--to-map", function_map,
+         "--output", work / "functions_named.csv",
+         "--rebase-stubs", HERE / "config.toml.in", "--stubs-out", stubs_out])
+    head, sep, rest = cfg_text.partition("stubs = [")
+    if not sep:
+        die("config.toml.in has no 'stubs = [' list to rebase")
+    _, closer, tail = rest.partition("]")
+    if not closer:
+        die("config.toml.in's stub list is not closed")
+    return head + "stubs = [\n" + stubs_out.read_text() + "]" + tail
+
+
 def print_variants(variants: dict[str, dict]) -> None:
     for serial, item in variants.items():
         base = item.get("base_serial")
@@ -467,6 +506,8 @@ def main() -> None:
         if out.exists():
             shutil.rmtree(out)
         cfg_text = (HERE / "config.toml.in").read_text()
+        if not canonical:
+            cfg_text = rebase_stubs(variant, args.variant, elf, function_map, work, cfg_text)
         cfg_text = (cfg_text.replace("@ELF@", elf.as_posix())
                             .replace("@CSV@", split.as_posix())
                             .replace("@OUT@", out.as_posix() + "/"))
