@@ -4877,6 +4877,11 @@ namespace
     PS2_REGISTER_GAME_OVERRIDE("LotR sound RPC compat", "SLUS_205.78", 0u, 0u, &applyLotrSoundRpcCompat);
     PS2_REGISTER_GAME_OVERRIDE("BT3 sound init bypass", "SLUS_216.78", 0u, 0u, &applyBt3SoundInitBypass);
     PS2_REGISTER_GAME_OVERRIDE("BT3 DTX sound URPC compat", "SLUS_216.78", 0u, 0u, &applyBt3DtxCompat);
+    // The PAL build (SLES_549.45) binds the same IOP sound service sid=0x90000200 and this
+    // layout carries no guest addresses -- only the sid and the URPC object stride -- so it
+    // transfers to any region unchanged. Without it SJX_Init reads its DTX handle back from an
+    // RPC receive buffer nobody fills, gets 0, and dead-loops on "E0100302 can't create DTX".
+    PS2_REGISTER_GAME_OVERRIDE("BT3 DTX sound URPC compat (PAL)", "SLES_549.45", 0u, 0u, &applyBt3DtxCompat);
     PS2_REGISTER_GAME_OVERRIDE("BT3 sceMpeg callback stubs", "SLUS_216.78", 0u, 0u, &applyBt3MpegCallbackStubs);
     // [nullpkt] The infinite-loading freeze: func_114860 (texture-packet address patcher) is
     // called with a NULL packet list (a1 = [obj+0x2C] not populated yet) and walks it as a
