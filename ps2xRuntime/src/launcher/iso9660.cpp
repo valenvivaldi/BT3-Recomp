@@ -274,9 +274,10 @@ bool verifySlusFromIso(const QString &isoPath)
     return QString::fromLatin1(hash.result().toHex()) == QLatin1String(kExpectedDiscElfSha256);
 }
 
-State verifyInstalledData(const QString &dataDir)
+State verifyInstalledData(const QString &dataDir, const QString &bootName,
+                          const QString &expectedSha256)
 {
-    const QString boot = dataDir + QStringLiteral("/SLUS_216.78");
+    const QString boot = QDir(dataDir).filePath(bootName);
     QFile f(boot);
     if (!f.exists())
         return State::Missing;
@@ -294,7 +295,13 @@ State verifyInstalledData(const QString &dataDir)
     }
 
     const QString got = QString::fromLatin1(hash.result().toHex());
-    return (got == QLatin1String(kExpectedDiscElfSha256)) ? State::Valid : State::Corrupt;
+    return (got.compare(expectedSha256, Qt::CaseInsensitive) == 0) ? State::Valid : State::Corrupt;
+}
+
+State verifyInstalledData(const QString &dataDir)
+{
+    return verifyInstalledData(dataDir, QStringLiteral("SLUS_216.78"),
+                               QString::fromLatin1(kExpectedDiscElfSha256));
 }
 
 quint64 dataSize(const QString &dataDir)

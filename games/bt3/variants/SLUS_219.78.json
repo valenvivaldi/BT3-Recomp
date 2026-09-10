@@ -1,0 +1,15 @@
+{
+  "serial": "SLUS_219.78",
+  "title": "Dragon Ball Z: Budokai Tenkaichi 3 (B14 Rev2 fan mod)",
+  "base_serial": "SLUS_216.78",
+  "role": "modified-alternate",
+  "build_status": "requires-port",
+  "required_inputs": [
+    "exact mod revision hash",
+    "function map generated from that revision",
+    "variant VU1 program manifest",
+    "variant DBZP overlay maps and patches",
+    "ported game-specific runtime overrides"
+  ],
+  "notes": "A mod revision is a separate target even when it derives from a USA release."
+}

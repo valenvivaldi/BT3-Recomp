@@ -25,6 +25,13 @@ repository contains no game code, assets, or media.
   sudo pacman -S --needed base-devel cmake git python rsync libarchive ffmpeg
   ```
 
+## ROM variants
+
+USA `SLUS_216.78` is the canonical and default target. Local disc dumps belong in
+[`roms/<SERIAL>/`](roms/README.md), while versioned metadata for planned variants
+lives in `variants/`. A second serial needs its own generated runner and address
+maps; it cannot use the USA runner by changing only the boot ELF.
+
 ## Build
 
 ```sh

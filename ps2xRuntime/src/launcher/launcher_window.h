@@ -2,8 +2,10 @@
 
 #include <QMainWindow>
 #include <QString>
+#include <QVector>
 
 class QLabel;
+class QComboBox;
 class QPushButton;
 class QProcess;
 class QWidget;
@@ -21,6 +23,7 @@ public:
 private slots:
     void onPlayClicked();
     void onSettingsClicked();
+    void onVariantChanged(int index);
 
 protected:
     void paintEvent(QPaintEvent *) override;
@@ -29,11 +32,13 @@ protected:
 private:
     void loadBackground();
     void resolveLaunchTarget();
+    void scanVariants();
     void updateHint();
     void checkGameData();
     bool openInstallWizard();
 
     QLabel *m_hint = nullptr;
+    QComboBox *m_variant = nullptr;
     QPushButton *m_play = nullptr;
     QPushButton *m_settings = nullptr;
     QWidget *m_bottomBar = nullptr;
@@ -43,6 +48,19 @@ private:
     QString m_bgPath;
     QString m_savedataDir;
     QString m_dataDir;
+    struct GameVariant
+    {
+        QString id;
+        QString title;
+        QString bootName;
+        QString runnerName;
+        QString elfName;
+        QString dataRelative;
+        QString expectedSha256;
+        bool selfExtracting = false;
+    };
+    QVector<GameVariant> m_variants;
+    int m_variantIndex = 0;
     bool m_plainRunner = false;
     bool m_gameDataValid = false;
     bool m_wizardShown = false;

@@ -4078,7 +4078,9 @@ void VU1Interpreter::jitStatPrint()   // [jitstat]
 #include "vu1_jit_ops.inc"
 // [vu1manifest] the translated microprograms are generated from the user's ELF by games/bt3/vu1_programs.py
 // (git-ignored). A tree without the game builds with an empty table: every program runs in the interpreter.
-#if __has_include("vu1_jit_gen.inc")
+#if defined(PS2X_VU1_GENERATED_INCLUDE)
+#include PS2X_VU1_GENERATED_INCLUDE
+#elif __has_include("vu1_jit_gen.inc")
 #include "vu1_jit_gen.inc"
 #else
 namespace vujit {

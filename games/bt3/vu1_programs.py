@@ -29,7 +29,9 @@ def fnv1a64(data: bytes) -> int:
     return h
 
 
-def generate(elf: Path, runtime: Path, work: Path, manifest: Path = HERE / "vu1_programs.json") -> Path:
+def generate(elf: Path, runtime: Path, work: Path,
+             manifest: Path = HERE / "vu1_programs.json",
+             output: Path | None = None) -> Path:
     """Cut the programs out of `elf`, verify, write images under `work`, run the generator. Returns the .inc path."""
     spec = json.loads(manifest.read_text())
     image_size = int(spec["image_size"], 16)
@@ -51,7 +53,8 @@ def generate(elf: Path, runtime: Path, work: Path, manifest: Path = HERE / "vu1_
         img = work / f"vumicro_{h:016x}.bin"
         img.write_bytes(image)
         args.append(f"{img.as_posix()}:{extent:x}")
-    out = runtime / "src" / "lib" / "vu1_jit_gen.inc"
+    out = output or (runtime / "src" / "lib" / "vu1_jit_gen.inc")
+    out.parent.mkdir(parents=True, exist_ok=True)
     gen = runtime / "tools" / "gen_vu1.py"
     subprocess.run([sys.executable, str(gen), str(out)] + args, check=True)
     print(f"== VU1 programs: {len(args)} bodies from {elf.name} -> {out}")
@@ -64,8 +67,11 @@ def main() -> None:
     ap.add_argument("--runtime", type=Path, default=ROOT / "ps2xRuntime")
     ap.add_argument("--work", type=Path, default=HERE / "work" / "vu1")
     ap.add_argument("--manifest", type=Path, default=HERE / "vu1_programs.json")
+    ap.add_argument("--output", type=Path,
+                    help="generated include path (defaults to ps2xRuntime/src/lib/vu1_jit_gen.inc)")
     a = ap.parse_args()
-    generate(a.elf.resolve(), a.runtime.resolve(), a.work.resolve(), a.manifest.resolve())
+    generate(a.elf.resolve(), a.runtime.resolve(), a.work.resolve(), a.manifest.resolve(),
+             a.output.resolve() if a.output else None)
 
 
 if __name__ == "__main__":

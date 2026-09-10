@@ -37,6 +37,10 @@ ps2xRuntime/include/ps2_overlay_functions.h
 # Extracted game data + generated sources produced by games/bt3/setup.py. Never commit: it is the
 # user's own ripped disc content, and it is gigabytes.
 games/bt3/work
+# Local game dumps for every supported serial. The README is kept so the expected
+# layout is visible in a fresh clone; all ELFs, ISOs and extracted files stay local.
+games/bt3/roms/*
+!games/bt3/roms/README.md
 
 # local build/deploy scratch
 log.txt

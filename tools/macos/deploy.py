@@ -25,6 +25,13 @@ def version(value):
     return tuple((list(map(int, value.split("."))) + [0, 0])[:3])
 
 
+def variant_runner_name(serial):
+    """Return the stable launcher filename for a non-USA runner."""
+    if serial == "SLES_549.45":
+        return "bt3-runner-eu"
+    raise ValueError(f"unsupported launcher variant serial: {serial}")
+
+
 def audit(app, minimum):
     """Reject unresolved external libraries and a falsely advertised OS floor."""
     required_arches = set(output("lipo", "-archs", app / "Contents/MacOS/bt3-runner").split())
@@ -73,6 +80,8 @@ def main():
     parser.add_argument("--jobs", type=int, default=3)
     parser.add_argument("--skip-setup", action="store_true", help="reuse generated sources and rebuild")
     parser.add_argument("--skip-build", action="store_true", help="package existing build products only")
+    parser.add_argument("--variant-runner", action="append", metavar="SERIAL=PATH",
+                        help="include an additional compiled runner (repeatable; PAL uses SLES_549.45=PATH)")
     parser.add_argument("--deployment-target", default=os.environ.get("MACOSX_DEPLOYMENT_TARGET") or platform.mac_ver()[0],
                         help="minimum macOS version (defaults to this Mac; dependencies are checked)")
     args = parser.parse_args()
@@ -103,6 +112,19 @@ def main():
     launcher = build / "launcher/Launcher.app"
     if not runner.is_file() or not launcher.is_dir():
         parser.error("runner or Launcher.app is missing; build first")
+    variant_runners = []
+    for spec in args.variant_runner or []:
+        serial, separator, path = spec.partition("=")
+        if not separator or not serial or not path:
+            parser.error(f"--variant-runner must be SERIAL=PATH: {spec}")
+        try:
+            name = variant_runner_name(serial)
+        except ValueError as exc:
+            parser.error(str(exc))
+        source = Path(path).expanduser().resolve()
+        if not source.is_file() or not os.access(source, os.X_OK):
+            parser.error(f"variant runner is missing or not executable: {source}")
+        variant_runners.append((name, source))
     dest.parent.mkdir(parents=True, exist_ok=True)
     # Publish only after deployment and verification succeed.
     with tempfile.TemporaryDirectory(prefix=".bt3-stage-", dir=dest.parent) as tmp:
@@ -110,6 +132,8 @@ def main():
         shutil.copytree(launcher, app, symlinks=True)
         bundled_runner = app / "Contents/MacOS/bt3-runner"
         shutil.copy2(runner, bundled_runner)
+        for name, source in variant_runners:
+            shutil.copy2(source, app / "Contents/MacOS" / name)
         resources = app / "Contents/Resources"
         shutil.copytree(ROOT / "ps2xRuntime/assets", resources / "assets", dirs_exist_ok=True)
         for name in ("background.png", "icon.png"):
@@ -130,6 +154,8 @@ def main():
         )
         deploy_args = [deployqt, app, f"-executable={bundled_runner}",
                        "-always-overwrite", "-no-codesign", "-no-plugins"]
+        for name, _source in variant_runners:
+            deploy_args.append(f"-executable={app / 'Contents/MacOS' / name}")
         deploy_args += [f"-libpath={path}" for path in library_paths]
         run(*deploy_args)
         # The launcher only needs Qt's Cocoa platform plugin. Copying every

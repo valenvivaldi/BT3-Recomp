@@ -258,6 +258,10 @@ def main() -> None:
     ap.add_argument("--dbzp", required=True, type=Path)
     ap.add_argument("--work", required=True, type=Path)
     ap.add_argument("--runtime", required=True, type=Path)
+    ap.add_argument("--output-dir", type=Path,
+                    help="overlay source directory (default: runtime/src/runner_overlay)")
+    ap.add_argument("--header-dir", type=Path,
+                    help="overlay header directory (default: runtime/include)")
     args = ap.parse_args()
 
     work = args.work
@@ -314,13 +318,14 @@ def main() -> None:
 
     lines, reg = register_mid_function_entries(lines, reg, MID_FUNCTION_ENTRIES)
 
-    dst = args.runtime / "src" / "runner_overlay"
+    dst = args.output_dir or (args.runtime / "src" / "runner_overlay")
+    header_dir = args.header_dir or (args.runtime / "include")
     dst.mkdir(parents=True, exist_ok=True)
     install(dst / "overlay_functions.cpp", "".join(lines))
     install(dst / "overlay_register.cpp", reg)
     install(dst / "f_gaps_extra.cpp", gaps_cpp)
     install(dst / "f_3376b8_extra.cpp", missing_cpp)
-    install(args.runtime / "include" / "ps2_overlay_functions.h", header)
+    install(header_dir / "ps2_overlay_functions.h", header)
     print(f"installed overlay sources -> {dst}")
 
 

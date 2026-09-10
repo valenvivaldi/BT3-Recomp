@@ -17,6 +17,8 @@ option(PS2X_ENABLE_RUNTIME_LOGS "Enable PS2 runtime logs" OFF)
 option(PS2X_ENABLE_AGRESSIVE_LOGS "Enable very verbose/agressive PS2 runtime logs" OFF)
 option(PS2X_STRICT_RETURN_DIAGNOSTICS "Route generated JR $ra returns through runtime branch diagnostics" OFF)
 option(PS2X_SHOW_WINDOWS_CONSOLE "Show a console window for ps2EntryRunner on Windows release builds" ON)
+set(PS2X_RUNNER_VARIANT "default" CACHE STRING
+    "Generated runner variant (default keeps the canonical USA runner)")
 
 if(PS2X_ENABLE_SCCACHE)
     find_program(PS2X_SCCACHE_PROGRAM sccache)
@@ -467,14 +469,28 @@ target_sources(ps2_runtime PRIVATE
     ${KERNEL_SRC_FILES}
 )
 
+if(PS2X_RUNNER_VARIANT STREQUAL "default")
+    set(PS2X_RUNNER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/runner")
+    set(PS2X_OVERLAY_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/runner_overlay")
+    set(PS2X_VARIANT_INCLUDE_DIR "")
+else()
+    set(PS2X_RUNNER_SOURCE_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/runner/variants/${PS2X_RUNNER_VARIANT}")
+    set(PS2X_OVERLAY_SOURCE_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/runner_overlay/variants/${PS2X_RUNNER_VARIANT}")
+    set(PS2X_VARIANT_INCLUDE_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/variants/${PS2X_RUNNER_VARIANT}")
+    message(STATUS "ps2EntryRunner generated variant: ${PS2X_RUNNER_VARIANT}")
+endif()
+
 file(GLOB RUNNER_SRC_FILES CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/runner/*.cpp"
+    "${PS2X_RUNNER_SOURCE_DIR}/*.cpp"
 )
 
 # Recompiled DBZP.BIN overlay (the game code). Kept in a separate directory so the
 # boot ELF's runner sources are never touched. See src/runner_overlay/.
 file(GLOB RUNNER_OVERLAY_SRC_FILES CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/runner_overlay/*.cpp"
+    "${PS2X_OVERLAY_SOURCE_DIR}/*.cpp"
 )
 list(APPEND RUNNER_SRC_FILES ${RUNNER_OVERLAY_SRC_FILES})
 
@@ -490,6 +506,12 @@ endif()
 add_executable(ps2EntryRunner
     ${RUNNER_SRC_FILES}
 )
+
+if(PS2X_VARIANT_INCLUDE_DIR)
+    target_include_directories(ps2EntryRunner PRIVATE "${PS2X_VARIANT_INCLUDE_DIR}")
+    target_compile_definitions(ps2_runtime PRIVATE
+        PS2X_VU1_GENERATED_INCLUDE="variants/${PS2X_RUNNER_VARIANT}/vu1_jit_gen.inc")
+endif()
 
 # The overlay's single 20MB TU and its register file must not be unity-batched
 # with the boot ELF's sources (anon-namespace initializer name clash + huge TU).

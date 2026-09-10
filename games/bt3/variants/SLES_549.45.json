@@ -1,0 +1,15 @@
+{
+  "serial": "SLES_549.45",
+  "title": "Dragon Ball Z: Budokai Tenkaichi 3 (Europe/Australia, PAL)",
+  "base_serial": "SLUS_216.78",
+  "role": "retail-alternate",
+  "build_status": "requires-port",
+  "required_inputs": [
+    "verified boot ELF hash",
+    "function map generated from SLES_549.45",
+    "PAL VU1 program manifest",
+    "PAL DBZP overlay maps and patches",
+    "ported game-specific runtime overrides"
+  ],
+  "notes": "Use USA as the behavioral baseline, but never reuse USA addresses."
+}

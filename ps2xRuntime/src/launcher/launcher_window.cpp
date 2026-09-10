@@ -8,6 +8,7 @@
 #include "settings_manager.h"
 
 #include <QApplication>
+#include <QComboBox>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -29,6 +30,11 @@
 
 namespace
 {
+    constexpr const char *kUsaElfSha256 =
+        "811188ba9b416500d921cd4d9514df0cbf42f3a41a99cf5aac5a3da37171bf99";
+    constexpr const char *kPalElfSha256 =
+        "98ff35e7962da9533ae7aa0b337ee316bc24527678a897c0e946db424153f228";
+
     // BT3SELFX footer: the last 32 bytes are "BT3SELFX" magic + payload info.
     bool isSelfExtractElf(const QString &path)
     {
@@ -55,22 +61,9 @@ LauncherWindow::LauncherWindow(QWidget *parent)
     m_savedataDir = QDir(apppaths::userRoot()).filePath(QStringLiteral("savedata"));
     m_dataDir = QDir(apppaths::userRoot()).filePath(QStringLiteral("data"));
 
-    // Resolve the game ELF next to the launcher binary.
-    const QDir appDir(QApplication::applicationDirPath());
-    static const char *kCandidates[] = {
-        "Dragon Ball - Budokai Tenkaichi 3",
-        "Dragon Ball Budokai Tenkaichi 3",
-        "SLUS-216.78",
-    };
-    for (const char *c : kCandidates)
-    {
-        const QString p = appDir.filePath(QString::fromLatin1(c));
-        if (QFile::exists(p) && isSelfExtractElf(p))
-        {
-            m_gameElf = p;
-            break;
-        }
-    }
+    // USA is always the first/default profile. Alternate profiles are added
+    // only when their runner is installed next to this launcher.
+    scanVariants();
 
     // Background: deploy assets/background.png if present, else a DBZ gradient.
     const QString bg = QDir(apppaths::assets()).filePath(QStringLiteral("background.png"));
@@ -103,6 +96,13 @@ LauncherWindow::LauncherWindow(QWidget *parent)
     m_settings->setCursor(Qt::PointingHandCursor);
     m_settings->setFixedHeight(50);
 
+    m_variant = new QComboBox(bottomBar);
+    m_variant->setObjectName(QStringLiteral("variantSelector"));
+    m_variant->setMinimumWidth(210);
+    for (const GameVariant &variant : m_variants)
+        m_variant->addItem(variant.title, variant.id);
+
+    barLayout->addWidget(m_variant, 0, Qt::AlignVCenter);
     barLayout->addWidget(m_play, 0, Qt::AlignVCenter);
     barLayout->addStretch(1);
     barLayout->addWidget(m_settings, 0, Qt::AlignVCenter);
@@ -127,6 +127,8 @@ LauncherWindow::LauncherWindow(QWidget *parent)
 
     connect(m_play, &QPushButton::clicked, this, &LauncherWindow::onPlayClicked);
     connect(m_settings, &QPushButton::clicked, this, &LauncherWindow::onSettingsClicked);
+    connect(m_variant, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, &LauncherWindow::onVariantChanged);
 
     barLayout->insertWidget(1, m_hint, 1, Qt::AlignVCenter | Qt::AlignLeft);
 
@@ -137,26 +139,79 @@ LauncherWindow::LauncherWindow(QWidget *parent)
     SettingsManager::instance().load();
 }
 
+void LauncherWindow::scanVariants()
+{
+    m_variants.clear();
+    m_variants.push_back({QStringLiteral("SLUS_216.78"),
+                          QStringLiteral("USA (SLUS-216.78)"),
+                          QStringLiteral("SLUS_216.78"),
+                          QStringLiteral("bt3-runner"),
+                          QStringLiteral("SLUS-216.78"),
+                          QStringLiteral("data"),
+                          QString::fromLatin1(kUsaElfSha256), true});
+
+    const QDir appDir(QApplication::applicationDirPath());
+    const QString palRunner = appDir.filePath(QStringLiteral("bt3-runner-eu"));
+    if (QFileInfo(palRunner).isExecutable())
+    {
+        m_variants.push_back({QStringLiteral("SLES_549.45"),
+                              QStringLiteral("Europe/Australia PAL (SLES-549.45)"),
+                              QStringLiteral("SLES_549.45"),
+                              QStringLiteral("bt3-runner-eu"),
+                              QStringLiteral("SLES-549.45"),
+                              QStringLiteral("data/SLES_549.45"),
+                              QString::fromLatin1(kPalElfSha256), false});
+    }
+}
+
+void LauncherWindow::onVariantChanged(int index)
+{
+    if (index < 0 || index >= m_variants.size())
+        return;
+    m_variantIndex = index;
+    m_gameElf.clear();
+    m_plainRunner = false;
+    checkGameData();
+}
+
 // Release deploy: no SELFX next to us, but a plain ps2EntryRunner from the
-// same stage tree. Boot it directly with data/SLUS_216.78 instead of
-// embedding a duplicate self-extracting runner (saves ~130 MiB payload).
-// Re-run after the install wizard so a freshly created runner (direct-runner
-// deploy) flips the hint straight to "Ready to Play" without a restart.
+// same stage tree. Boot it directly with data/<selected boot ELF>. The USA
+// profile remains the default and keeps the old self-extracting path intact.
+// Re-run after the install wizard so a freshly created runner flips the hint.
 void LauncherWindow::resolveLaunchTarget()
 {
+    m_gameElf.clear();
+    m_plainRunner = false;
+    if (m_variants.isEmpty() || m_variantIndex < 0 || m_variantIndex >= m_variants.size())
+        return;
+
+    const GameVariant &variant = m_variants.at(m_variantIndex);
+    const QDir appDir(QApplication::applicationDirPath());
+    if (variant.selfExtracting)
+    {
+        static const char *kCandidates[] = {
+            "Dragon Ball - Budokai Tenkaichi 3",
+            "Dragon Ball Budokai Tenkaichi 3",
+            "SLUS-216.78",
+        };
+        for (const char *c : kCandidates)
+        {
+            const QString p = appDir.filePath(QString::fromLatin1(c));
+            if (QFile::exists(p) && isSelfExtractElf(p))
+            {
+                m_gameElf = p;
+                break;
+            }
+        }
+    }
     if (m_gameElf.isEmpty())
     {
 #ifdef _WIN32
-        const QString runner = QDir::cleanPath(
-            QApplication::applicationDirPath() + QStringLiteral("/bt3-runner.exe"));
+        const QString runner = appDir.filePath(variant.runnerName + QStringLiteral(".exe"));
 #else
-        const QString runner = QDir::cleanPath(
-            QApplication::applicationDirPath() + QStringLiteral("/bt3-runner"));
+        const QString runner = appDir.filePath(variant.runnerName);
 #endif
-        if (QFile::exists(runner) && QFileInfo(runner).isExecutable())
-            m_plainRunner = true;
-        else
-            m_plainRunner = false;
+        m_plainRunner = QFileInfo(runner).isExecutable();
     }
 }
 
@@ -179,19 +234,31 @@ QString LauncherWindow::findGameElf()
 
 void LauncherWindow::onPlayClicked()
 {
+    resolveLaunchTarget();
     if (!m_plainRunner && m_gameElf.isEmpty())
-    {
-        m_gameElf = findGameElf();
-        if (m_gameElf.isEmpty())
-            return;
-    }
+        return;
+
+    if (m_variants.isEmpty() || m_variantIndex < 0 || m_variantIndex >= m_variants.size())
+        return;
+    const GameVariant &variant = m_variants.at(m_variantIndex);
 
     // Game data must be present and validated before the runner can boot.
     if (!m_gameDataValid)
     {
-        // The install wizard restores data on success.
-        if (!openInstallWizard())
+        if (variant.id == QLatin1String("SLUS_216.78"))
+        {
+            // The existing wizard is intentionally still USA-specific.
+            if (!openInstallWizard())
+                return;
+        }
+        else
+        {
+            QMessageBox::information(
+                this, QStringLiteral("PAL data not installed"),
+                QStringLiteral("Place the extracted %1 disc tree in %2 before playing this variant.")
+                    .arg(variant.id, QDir(apppaths::userRoot()).filePath(variant.dataRelative)));
             return;
+        }
     }
 
     // Save any pending settings so the game boots with the launcher's config.
@@ -215,12 +282,12 @@ void LauncherWindow::onPlayClicked()
         // Direct runner mode: point it at the extracted boot ELF and the
         // bundled library tree; it is already the real ps2EntryRunner.
 #ifdef _WIN32
-        proc->setProgram(appDir.filePath(QStringLiteral("bt3-runner.exe")));
+        proc->setProgram(appDir.filePath(variant.runnerName + QStringLiteral(".exe")));
 #else
-        proc->setProgram(appDir.filePath(QStringLiteral("bt3-runner")));
+        proc->setProgram(appDir.filePath(variant.runnerName));
 #endif
-        const QString dataDir = m_dataDir;
-        proc->setArguments({QDir(dataDir).filePath(QStringLiteral("SLUS_216.78"))});
+        const QString dataDir = QDir(apppaths::userRoot()).filePath(variant.dataRelative);
+        proc->setArguments({QDir(dataDir).filePath(variant.bootName)});
         auto env = QProcessEnvironment::systemEnvironment();
         // [deploy] Anchor the runner's savedata/assets/fonts (and bt3_settings.ini)
         // at the deploy root -- where the launcher wrote them -- not data/.
@@ -253,7 +320,15 @@ void LauncherWindow::onPlayClicked()
 void LauncherWindow::checkGameData()
 {
     resolveLaunchTarget();
-    m_gameDataValid = (DiscVerify::verifyInstalledData(m_dataDir) == DiscVerify::State::Valid);
+    if (m_variants.isEmpty() || m_variantIndex < 0 || m_variantIndex >= m_variants.size())
+        m_gameDataValid = false;
+    else
+    {
+        const GameVariant &variant = m_variants.at(m_variantIndex);
+        const QString dataDir = QDir(apppaths::userRoot()).filePath(variant.dataRelative);
+        m_gameDataValid = (DiscVerify::verifyInstalledData(
+            dataDir, variant.bootName, variant.expectedSha256) == DiscVerify::State::Valid);
+    }
 
     if (m_play)
         m_play->setEnabled((!m_gameElf.isEmpty() || m_plainRunner) && m_gameDataValid);

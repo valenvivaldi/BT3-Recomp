@@ -78,6 +78,11 @@ bool verifySlusFromIso(const QString &isoPath);
 // Hash of the installed data/SLUS_216.78 next to the launcher.
 State verifyInstalledData(const QString &dataDir);
 
+// Variant-aware form used by the launcher. The legacy overload above remains
+// the USA default for existing settings and diagnostics.
+State verifyInstalledData(const QString &dataDir, const QString &bootName,
+                          const QString &expectedSha256);
+
 // Total size in bytes of all files under dataDir.
 quint64 dataSize(const QString &dataDir);
 } // namespace DiscVerify
