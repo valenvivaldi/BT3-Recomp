@@ -157,6 +157,14 @@ def cmake_configure_extra() -> list:
     extra.append("-DPS2X_BUILD_STUDIO=" + ("ON" if os.environ.get("PS2X_SETUP_STUDIO") == "1" else "OFF"))
     if IS_MACOS:
         extra += ["-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"]
+        # [pgs] paraLLEl-GS does not build on macOS: its Granite dependency's
+        # sleep_until_nsecs() falls back to clock_nanosleep/TIMER_ABSTIME for
+        # everything that is not _WIN32, and macOS has neither. CMake enables the
+        # backend whenever the submodule checkout exists, and setup.py fetches
+        # submodules, so without this a fresh macOS configure breaks the build.
+        # PS2X_SETUP_PGS=1 opts back in (needs MoltenVK and a patched Granite).
+        if os.environ.get("PS2X_SETUP_PGS") != "1":
+            extra.append("-DPS2X_DISABLE_PGS=ON")
         if os.environ.get("MACOSX_DEPLOYMENT_TARGET"):
             extra.append("-DCMAKE_OSX_DEPLOYMENT_TARGET=" + os.environ["MACOSX_DEPLOYMENT_TARGET"])
         if not (BUILD / "CMakeCache.txt").exists() and shutil.which("ninja"):
@@ -200,6 +208,14 @@ def configured() -> bool:
         desired = os.environ["MACOSX_DEPLOYMENT_TARGET"]
         if not any(line.startswith("CMAKE_OSX_DEPLOYMENT_TARGET:") and line.endswith("=" + desired)
                    for line in cache.splitlines()):
+            return False
+    if IS_MACOS:
+        # [pgs] A cache configured before the parallel-gs submodule was fetched
+        # has PS2X_DISABLE_PGS=OFF and no PGS targets; reusing it silently keeps
+        # the backend enabled on the next build and fails to compile Granite.
+        desired_pgs = "OFF" if os.environ.get("PS2X_SETUP_PGS") == "1" else "ON"
+        if not any(line.startswith("PS2X_DISABLE_PGS:") and line.endswith("=" + desired_pgs)
+                   for line in cache_text.splitlines()):
             return False
     if any((BUILD / f).exists() for f in ("build.ninja", "Makefile", "ALL_BUILD.vcxproj")):
         return True
@@ -385,7 +401,14 @@ def main() -> None:
             die(f"{args.variant} not found in ISO (is this the selected release?)")
         make_writable(work)
     elif not args.skip_setup:
+        # An earlier ISO extraction leaves the whole tree read-only (ISO9660), so
+        # copying a bare ELF over a previous run's copy fails on the open. Make
+        # the tree writable first -- the game itself opens BIN/DBZP.BIN
+        # read-write, so this is needed for anything the user dropped in too.
+        if work.exists():
+            make_writable(work)
         shutil.copyfile(src, elf)
+        make_writable(work)
         print("NOTE: you passed a bare ELF. The game also needs the ISO's BIN/, IRX/")
         print(f"      and DATA/ directories next to it in {work}.")
 
