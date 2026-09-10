@@ -47,6 +47,7 @@ games/bt3/roms/*
 
 # local build/deploy scratch
 log.txt
+games/bt3/savedata/
 log_*.txt
 __pycache__/
 
