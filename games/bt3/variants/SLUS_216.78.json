@@ -5,5 +5,13 @@
   "build_status": "playable",
   "boot_elf_sha256": "811188ba9b416500d921cd4d9514df0cbf42f3a41a99cf5aac5a3da37171bf99",
   "function_map": "games/bt3/functions.csv",
+  "vu1_manifest": "games/bt3/vu1_programs.json",
+  "overlay_map": "games/bt3/dbzp_funcs.csv",
+  "launcher": {
+    "label": "USA (SLUS-216.78)",
+    "runner": "bt3-runner",
+    "data_dir": "data",
+    "self_extracting": true
+  },
   "notes": "Default profile. Its generated runner and overrides are the current production path."
 }

@@ -92,17 +92,24 @@ See [deployment details](docs/DEPLOY.md#macos-app-experimental) for rebuilds and
 
 The project keeps the USA executable as the reference target. Each alternate
 serial has its own metadata, generated function maps, overlays, and runner; a
-different boot ELF cannot be used with the USA runner.
+different boot ELF cannot be used with the USA runner. The descriptors in
+`games/bt3/variants/` are the single source of truth: `setup.py` takes its
+per-variant recompiler inputs from them, `tools/gen_variant_table.py` generates
+the launcher's profile table, and `tools/macos/deploy.py` reads the runner names
+it bundles.
 
 | Serial | Region / role | Current state |
 | --- | --- | --- |
 | `SLUS-216.78` | USA, canonical | Playable. This is the default launcher selection and the only target shared by the cross-platform release instructions. |
-| `SLES-549.45` | Europe/Australia, PAL | The ELF, VU1 manifest, and PAL runner build successfully. It is selectable in the macOS launcher, but currently stops before the company splash and is not playable yet. |
+| `SLES-549.45` | Europe/Australia, PAL | Work in progress, opt-in behind `PS2X_SETUP_EXPERIMENTAL=1`. The ELF and VU1 manifest are verified and the runner builds from PAL-specific function and overlay maps, but the overlay map is unvalidated and the runtime overrides are not ported, so it stops before the company splash and is not playable. |
 | `SLUS-219.78` | Alternate modified revision | Metadata is present as a separate port target. It still requires an exact input image, revision-specific maps, overlays, and runtime overrides; no runner is shipped yet. |
 
-ROM data is kept outside the repository under the serial-specific directories
-(`data/SLUS_216.78`, `data/SLES_549.45`, and so on). The launcher keeps
-`SLUS-216.78` as the default when no alternate variant is selected.
+Local disc dumps live outside the repository in `games/bt3/roms/<SERIAL>/`. In a
+deploy, the launcher reads the installed game data from `data/` for USA (the
+historical layout) and from `data/<SERIAL>/` for every other variant; the hint
+under the PLAY button names the exact directory it expects. The launcher keeps
+`SLUS-216.78` as the default, and only offers a variant whose runner is actually
+installed next to it.
 
 ## Run
 

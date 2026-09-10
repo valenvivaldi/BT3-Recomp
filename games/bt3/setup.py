@@ -69,6 +69,12 @@ def load_variants() -> dict[str, dict]:
     return variants
 
 
+def variant_input(variant: dict, key: str, default: Path | None) -> Path | None:
+    """Resolve a repo-relative input path recorded in a variant descriptor."""
+    value = variant.get(key)
+    return (ROOT / value) if value else default
+
+
 def print_variants(variants: dict[str, dict]) -> None:
     for serial, item in variants.items():
         base = item.get("base_serial")
@@ -294,18 +300,26 @@ def main() -> None:
     variant = variants.get(args.variant)
     if not variant:
         die(f"unknown variant {args.variant}; use --list-variants")
-    if variant.get("build_status") != "playable":
+    experimental = variant.get("build_status") != "playable"
+    if experimental:
+        # A registered-but-unported variant is a probe, not a release target. It
+        # used to be refused outright, which also made the whole variant code
+        # path unreachable -- and hid the fact that its generation steps still
+        # need per-variant inputs. Building one is allowed, loudly and opt-in.
         needs = variant.get("required_inputs", [])
-        detail = "\n  - ".join(needs)
-        die(f"{args.variant} is registered but not buildable yet. It needs:\n  - {detail}\n"
-            f"USA {DEFAULT_VARIANT} remains the playable default.")
+        detail = "".join(f"\n  - {n}" for n in needs)
+        print(f"WARNING: {args.variant} is a work-in-progress port target. It still needs:{detail}")
+        print(f"         USA {DEFAULT_VARIANT} remains the playable default.")
+        if os.environ.get("PS2X_SETUP_EXPERIMENTAL") != "1":
+            die(f"refusing to build {args.variant} without PS2X_SETUP_EXPERIMENTAL=1")
     if args.skip_setup and args.gen_only:
         die("--skip-setup and --gen-only are mutually exclusive")
 
     jobs = str(args.jobs)
-    os.environ["PS2X_RUNNER_VARIANT"] = "default" if args.variant == DEFAULT_VARIANT else args.variant
+    canonical = args.variant == DEFAULT_VARIANT
+    os.environ["PS2X_RUNNER_VARIANT"] = "default" if canonical else args.variant
     rt = ROOT / "ps2xRuntime"
-    if args.variant == DEFAULT_VARIANT:
+    if canonical:
         runner_src_dir = rt / "src" / "runner"
         overlay_src_dir = rt / "src" / "runner_overlay"
         variant_include_dir = rt / "include"
@@ -315,20 +329,48 @@ def main() -> None:
         overlay_src_dir = rt / "src" / "runner_overlay" / "variants" / args.variant
         variant_include_dir = rt / "include" / "variants" / args.variant
         vu_include = variant_include_dir / "vu1_jit_gen.inc"
+
+    # The canonical target keeps the historical flat work/ layout (extracted disc
+    # tree + generated output). A variant gets work/<SERIAL>/ so its disc tree,
+    # its derived function map and its generated output cannot collide with USA's
+    # -- work/<SERIAL> used to be the boot ELF *file*, which left nowhere for the
+    # per-variant map splat_function_map.py is documented to write.
+    work = WORK if canonical else WORK / args.variant
+
+    # Per-variant recompiler inputs. These used to be hardcoded to the USA files,
+    # so a variant build would have recompiled its own ELF against USA addresses.
+    function_map = variant_input(variant, "function_map", HERE / "functions.csv" if canonical else None)
+    vu1_manifest = variant_input(variant, "vu1_manifest", HERE / "vu1_programs.json" if canonical else None)
+    overlay_map = variant_input(variant, "overlay_map", HERE / "dbzp_funcs.csv" if canonical else None)
+    # The overlay is the game code (BIN/DBZP.BIN), so a missing variant map would
+    # silently mean "generate this ELF against USA overlay addresses".
+    for key, path, hint in (
+        ("function_map", function_map, "splat_function_map.py against the variant's ELF"),
+        ("vu1_manifest", vu1_manifest, "vu1_manifest.py against the variant's ELF"),
+        ("overlay_map", overlay_map, "splat_function_map.py against the variant's BIN/DBZP.BIN"),
+    ):
+        if path is None:
+            die(f"{args.variant}: no \"{key}\" recorded in variants/{args.variant}.json.\n"
+                f"A variant must not reuse the USA inputs. Generate one with {hint}\n"
+                f"and record its repo-relative path in the descriptor.")
+        if not path.is_file():
+            die(f"{args.variant}: \"{key}\" points at {path}, which does not exist.\n"
+                f"Generate it with {hint}.")
+
     if args.skip_setup:
-        if not (WORK / args.variant).is_file():
-            die(f"--skip-setup requires an existing games/bt3/work/ (no {args.variant} found)")
+        if not (work / args.variant).is_file():
+            die(f"--skip-setup requires an existing {work}/ (no {args.variant} found)")
         src = None
-        elf = WORK / args.variant
+        elf = work / args.variant
     else:
         if not args.src:
             ap.print_usage(sys.stderr)
-            die("missing the BT3 ISO or SLUS_216.78 ELF path")
+            die(f"missing the ISO or bare {args.variant} ELF path")
         src = Path(args.src).resolve()
         if not src.exists():
             die(f"{src} does not exist")
-        WORK.mkdir(parents=True, exist_ok=True)
-        elf = WORK / args.variant
+        work.mkdir(parents=True, exist_ok=True)
+        elf = work / args.variant
 
     # 1. Obtain the game files. The runtime reads loose files (BIN/DBZP.BIN, IRX/,
     #    DATA/) from the directory the ELF lives in, so extract the WHOLE ISO tree.
@@ -336,19 +378,19 @@ def main() -> None:
         kind, exe = find_extractor()
         print(f"== extracting ISO contents (~4 GB) with {exe}")
         if kind == "tar":
-            run([exe, "-xf", src, "-C", WORK])
+            run([exe, "-xf", src, "-C", work])
         else:
-            run([exe, "x", "-y", f"-o{WORK}", src], stdout=subprocess.DEVNULL)
+            run([exe, "x", "-y", f"-o{work}", src], stdout=subprocess.DEVNULL)
         if not elf.is_file():
             die(f"{args.variant} not found in ISO (is this the selected release?)")
-        make_writable(WORK)
+        make_writable(work)
     elif not args.skip_setup:
         shutil.copyfile(src, elf)
         print("NOTE: you passed a bare ELF. The game also needs the ISO's BIN/, IRX/")
-        print(f"      and DATA/ directories next to it in {WORK}.")
+        print(f"      and DATA/ directories next to it in {work}.")
 
     if args.skip_setup:
-        print("--skip-setup: reusing existing games/bt3/work/ and generated sources")
+        print(f"--skip-setup: reusing existing {work}/ and generated sources")
     else:
         # 2. Verify the exact boot ELF for this registered variant.
         got = sha256_of(elf)
@@ -368,7 +410,7 @@ def main() -> None:
     print("== generating VU1 programs from the ELF")
     sys.path.insert(0, str(HERE))
     from vu1_programs import generate as generate_vu1
-    generate_vu1(elf, rt, WORK / "vu1", output=vu_include)
+    generate_vu1(elf, rt, work / "vu1", manifest=vu1_manifest, output=vu_include)
 
     # 3. Configure + build the recompiler. Configure only once: the globs use
     #    CONFIGURE_DEPENDS, so later builds re-run cmake by themselves when the
@@ -396,27 +438,39 @@ def main() -> None:
         print("== generating runner sources")
         sys.path.insert(0, str(HERE))
         from split_functions import split_csv
-        split = WORK / "functions_split.csv"
-        split_csv(elf, HERE / "functions.csv", split)
-        out = WORK / "output"
+        split = work / "functions_split.csv"
+        split_csv(elf, function_map, split)
+        out = work / "output"
         if out.exists():
             shutil.rmtree(out)
         cfg_text = (HERE / "config.toml.in").read_text()
         cfg_text = (cfg_text.replace("@ELF@", elf.as_posix())
                             .replace("@CSV@", split.as_posix())
                             .replace("@OUT@", out.as_posix() + "/"))
-        (WORK / "config.toml").write_text(cfg_text)
-        run([recomp, WORK / "config.toml"])
+        (work / "config.toml").write_text(cfg_text)
+        run([recomp, work / "config.toml"])
 
         # 5. Post-generation patches + the overlay module from DBZP.BIN.
-        run([sys.executable, HERE / "apply_patches.py", out])
-        print("== generating overlay sources from BIN/DBZP.BIN")
-        run([sys.executable, HERE / "gen_overlay.py",
-             "--recomp", recomp, "--dbzp", WORK / "BIN" / "DBZP.BIN",
-             "--work", WORK / "overlay", "--runtime", rt,
-             "--output-dir", overlay_src_dir, "--header-dir", variant_include_dir])
+        #    apply_patches.py and apply_overlay_patches.py are anchored to USA
+        #    generated output and exit loudly when an anchor is missing, so they
+        #    only run for the canonical target.
         if args.variant == DEFAULT_VARIANT:
+            run([sys.executable, HERE / "apply_patches.py", out])
+        else:
+            print(f"== skipping apply_patches.py ({args.variant} has no ported source patches)")
+        print("== generating overlay sources from BIN/DBZP.BIN")
+        overlay_cmd = [sys.executable, HERE / "gen_overlay.py",
+                       "--recomp", recomp, "--dbzp", work / "BIN" / "DBZP.BIN",
+                       "--work", work / "overlay", "--runtime", rt,
+                       "--output-dir", overlay_src_dir, "--header-dir", variant_include_dir,
+                       "--main-map", overlay_map]
+        if args.variant == DEFAULT_VARIANT:
+            run(overlay_cmd)
             run([sys.executable, HERE / "apply_overlay_patches.py", rt])
+        else:
+            # The re-entry-label and gap-stitch tables in gen_overlay.py are USA
+            # addresses; --simple emits just the main map for the variant.
+            run(overlay_cmd + ["--simple"])
 
         # 6. Install into the runtime tree.
         print("== installing runner sources")

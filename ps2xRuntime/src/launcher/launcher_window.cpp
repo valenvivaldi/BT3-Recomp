@@ -28,13 +28,13 @@
 
 #include <cstdio>
 
+// ROM-variant table generated from games/bt3/variants/*.json by
+// tools/gen_variant_table.py (see src/launcher/CMakeLists.txt). The descriptors
+// are the single source of truth; nothing about a variant is spelled out here.
+#include "variant_table.inc"
+
 namespace
 {
-    constexpr const char *kUsaElfSha256 =
-        "811188ba9b416500d921cd4d9514df0cbf42f3a41a99cf5aac5a3da37171bf99";
-    constexpr const char *kPalElfSha256 =
-        "98ff35e7962da9533ae7aa0b337ee316bc24527678a897c0e946db424153f228";
-
     // BT3SELFX footer: the last 32 bytes are "BT3SELFX" magic + payload info.
     bool isSelfExtractElf(const QString &path)
     {
@@ -101,6 +101,8 @@ LauncherWindow::LauncherWindow(QWidget *parent)
     m_variant->setMinimumWidth(210);
     for (const GameVariant &variant : m_variants)
         m_variant->addItem(variant.title, variant.id);
+    // Only one profile installed: the selector would be a one-item dropdown.
+    m_variant->setVisible(m_variants.size() > 1);
 
     barLayout->addWidget(m_variant, 0, Qt::AlignVCenter);
     barLayout->addWidget(m_play, 0, Qt::AlignVCenter);
@@ -130,7 +132,9 @@ LauncherWindow::LauncherWindow(QWidget *parent)
     connect(m_variant, qOverload<int>(&QComboBox::currentIndexChanged),
             this, &LauncherWindow::onVariantChanged);
 
-    barLayout->insertWidget(1, m_hint, 1, Qt::AlignVCenter | Qt::AlignLeft);
+    // Slot 2: the bar is [variant, play, hint, stretch, settings]. Index 1 would
+    // put the stretching hint between the selector and PLAY.
+    barLayout->insertWidget(2, m_hint, 1, Qt::AlignVCenter | Qt::AlignLeft);
 
     checkGameData();
 
@@ -139,28 +143,31 @@ LauncherWindow::LauncherWindow(QWidget *parent)
     SettingsManager::instance().load();
 }
 
+// The canonical profile (record 0) is always offered: on a release deploy its
+// runner may be the self-extracting ELF rather than a plain binary next to us.
+// An alternate profile only appears once its runner is actually installed here.
 void LauncherWindow::scanVariants()
 {
     m_variants.clear();
-    m_variants.push_back({QStringLiteral("SLUS_216.78"),
-                          QStringLiteral("USA (SLUS-216.78)"),
-                          QStringLiteral("SLUS_216.78"),
-                          QStringLiteral("bt3-runner"),
-                          QStringLiteral("SLUS-216.78"),
-                          QStringLiteral("data"),
-                          QString::fromLatin1(kUsaElfSha256), true});
-
     const QDir appDir(QApplication::applicationDirPath());
-    const QString palRunner = appDir.filePath(QStringLiteral("bt3-runner-eu"));
-    if (QFileInfo(palRunner).isExecutable())
+    for (const VariantRecord &record : kVariantRecords)
     {
-        m_variants.push_back({QStringLiteral("SLES_549.45"),
-                              QStringLiteral("Europe/Australia PAL (SLES-549.45)"),
-                              QStringLiteral("SLES_549.45"),
-                              QStringLiteral("bt3-runner-eu"),
-                              QStringLiteral("SLES-549.45"),
-                              QStringLiteral("data/SLES_549.45"),
-                              QString::fromLatin1(kPalElfSha256), false});
+        GameVariant variant;
+        variant.id = QString::fromLatin1(record.id);
+        variant.title = QString::fromLatin1(record.label);
+        variant.bootName = QString::fromLatin1(record.bootName);
+        variant.runnerName = QString::fromLatin1(record.runnerName);
+        variant.dataRelative = QString::fromLatin1(record.dataRelative);
+        variant.expectedSha256 = QString::fromLatin1(record.expectedSha256);
+        variant.selfExtracting = record.selfExtracting;
+
+        QString runner = appDir.filePath(variant.runnerName);
+#ifdef _WIN32
+        runner += QStringLiteral(".exe");
+#endif
+        if (!m_variants.isEmpty() && !QFileInfo(runner).isExecutable())
+            continue;
+        m_variants.push_back(variant);
     }
 }
 
@@ -245,20 +252,11 @@ void LauncherWindow::onPlayClicked()
     // Game data must be present and validated before the runner can boot.
     if (!m_gameDataValid)
     {
-        if (variant.id == QLatin1String("SLUS_216.78"))
-        {
-            // The existing wizard is intentionally still USA-specific.
-            if (!openInstallWizard())
-                return;
-        }
-        else
-        {
-            QMessageBox::information(
-                this, QStringLiteral("PAL data not installed"),
-                QStringLiteral("Place the extracted %1 disc tree in %2 before playing this variant.")
-                    .arg(variant.id, QDir(apppaths::userRoot()).filePath(variant.dataRelative)));
+        // Safety net: PLAY is disabled while the data is invalid, so this is
+        // only reached if the enabling logic changes. The install wizard is
+        // still USA-specific; updateHint() names the directory for the rest.
+        if (!variant.selfExtracting || !openInstallWizard())
             return;
-        }
     }
 
     // Save any pending settings so the game boots with the launcher's config.
@@ -348,6 +346,13 @@ void LauncherWindow::updateHint()
     {
         color = kRed;
         text = QStringLiteral("Missing or Corrupted Data");
+        if (m_variantIndex >= 0 && m_variantIndex < m_variants.size())
+        {
+            const GameVariant &variant = m_variants.at(m_variantIndex);
+            text = QStringLiteral("Missing or Corrupted Data — expected %1/ in %2")
+                       .arg(variant.bootName,
+                            QDir(apppaths::userRoot()).filePath(variant.dataRelative));
+        }
     }
     else if (!m_gameElf.isEmpty() || m_plainRunner)
     {

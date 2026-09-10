@@ -5,11 +5,11 @@
   "role": "modified-alternate",
   "build_status": "requires-port",
   "required_inputs": [
-    "exact mod revision hash",
+    "exact mod revision hash (no \"boot_elf_sha256\" recorded yet)",
     "function map generated from that revision",
     "variant VU1 program manifest",
-    "variant DBZP overlay maps and patches",
+    "variant DBZP overlay map",
     "ported game-specific runtime overrides"
   ],
-  "notes": "A mod revision is a separate target even when it derives from a USA release."
+  "notes": "A mod revision is a separate target even when it derives from a USA release. No launcher profile: nothing is built or shipped for it yet."
 }

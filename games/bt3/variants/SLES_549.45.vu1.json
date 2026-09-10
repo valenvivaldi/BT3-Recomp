@@ -3,17 +3,90 @@
   "elf_sha256": "98ff35e7962da9533ae7aa0b337ee316bc24527678a897c0e946db424153f228",
   "image_size": "0x4000",
   "programs": [
-    {"id": "00-adc9c8ce9a01f123", "section": ".DVP.overlay..0x0.2274673333.41.0", "extent": "0x3f8", "fnv1a64": "0xadc9c8ce9a01f123", "segments": [{"offset": "0x20190e", "length": "0x3f8"}]},
-    {"id": "01-b089187e53857203", "section": ".DVP.overlay..0x0.2274673333.57.1", "extent": "0x3e0", "fnv1a64": "0xb089187e53857203", "segments": [{"offset": "0x201d06", "length": "0x3e0"}]},
-    {"id": "02-d1a875f7d33fb6a3", "section": ".DVP.overlay..0x0.2274673333.73.2", "extent": "0x318", "fnv1a64": "0xd1a875f7d33fb6a3", "segments": [{"offset": "0x2020e6", "length": "0x318"}]},
-    {"id": "03-3c534cdab0aba763", "section": ".DVP.overlay..0x0.2274673333.89.3", "extent": "0x328", "fnv1a64": "0x3c534cdab0aba763", "segments": [{"offset": "0x2023fe", "length": "0x328"}]},
-    {"id": "04-19dbc3365ea56383", "section": ".DVP.overlay..0x0.2274673333.105.4", "extent": "0x800", "fnv1a64": "0x19dbc3365ea56383", "segments": [{"offset": "0x202726", "length": "0x800"}]},
-    {"id": "05-b28b64689143b723", "section": ".DVP.overlay..unknvma.440604740.392.5", "extent": "0x478", "fnv1a64": "0xb28b64689143b723", "segments": [{"offset": "0x202f26", "length": "0x478"}]},
-    {"id": "06-19dbc3365ea56383", "section": ".DVP.overlay..0x0.2274673333.121.6", "extent": "0x800", "fnv1a64": "0x19dbc3365ea56383", "segments": [{"offset": "0x20339e", "length": "0x800"}]},
-    {"id": "07-98e7c5659c7a6263", "section": ".DVP.overlay..unknvma.3793649418.384.7", "extent": "0x568", "fnv1a64": "0x98e7c5659c7a6263", "segments": [{"offset": "0x203b9e", "length": "0x568"}]},
-    {"id": "08-19dbc3365ea56383", "section": ".DVP.overlay..0x0.2274673333.137.8", "extent": "0x800", "fnv1a64": "0x19dbc3365ea56383", "segments": [{"offset": "0x204106", "length": "0x800"}]},
-    {"id": "09-02048da33ec05aa3", "section": ".DVP.overlay..unknvma.4150535484.382.9", "extent": "0x618", "fnv1a64": "0x02048da33ec05aa3", "segments": [{"offset": "0x204906", "length": "0x618"}]},
-    {"id": "10-e696242696a5ea83", "section": ".DVP.overlay..0x0.2274673333.153.10", "extent": "0x340", "fnv1a64": "0xe696242696a5ea83", "segments": [{"offset": "0x204f1e", "length": "0x340"}]},
-    {"id": "11-e98673e10c2b2ec3", "section": ".DVP.overlay..0x0.2274673333.169.11", "extent": "0x2f0", "fnv1a64": "0xe98673e10c2b2ec3", "segments": [{"offset": "0x20525e", "length": "0x2f0"}]}
+    {
+      "id": "00-0492d545dc59311d",
+      "extent": "0x3f8",
+      "fnv1a64": "0x0492d545dc59311d",
+      "segments": [
+        {
+          "offset": "0x1c1688",
+          "length": "0x3f8"
+        }
+      ]
+    },
+    {
+      "id": "01-a0a38043aeaa231a",
+      "extent": "0x3e0",
+      "fnv1a64": "0xa0a38043aeaa231a",
+      "segments": [
+        {
+          "offset": "0x1c1a88",
+          "length": "0x3e0"
+        }
+      ]
+    },
+    {
+      "id": "03-7e8efb7575b22f69",
+      "extent": "0x328",
+      "fnv1a64": "0x7e8efb7575b22f69",
+      "segments": [
+        {
+          "offset": "0x1c2198",
+          "length": "0x328"
+        }
+      ]
+    },
+    {
+      "id": "04-0b7f264e0237b48e",
+      "extent": "0xc78",
+      "fnv1a64": "0x0b7f264e0237b48e",
+      "segments": [
+        {
+          "offset": "0x1c24c8",
+          "length": "0x800"
+        },
+        {
+          "offset": "0x1c2cd0",
+          "length": "0x478"
+        }
+      ]
+    },
+    {
+      "id": "06-05c48715b8434850",
+      "extent": "0xe18",
+      "fnv1a64": "0x05c48715b8434850",
+      "segments": [
+        {
+          "offset": "0x1c3ed8",
+          "length": "0x800"
+        },
+        {
+          "offset": "0x1c46e0",
+          "length": "0x618"
+        }
+      ]
+    },
+    {
+      "id": "07-ff81d66058071344",
+      "extent": "0x340",
+      "fnv1a64": "0xff81d66058071344",
+      "segments": [
+        {
+          "offset": "0x1c4d08",
+          "length": "0x340"
+        }
+      ]
+    },
+    {
+      "id": "08-28ce214c0c35fc68",
+      "extent": "0x2f0",
+      "fnv1a64": "0x28ce214c0c35fc68",
+      "segments": [
+        {
+          "offset": "0x1c5058",
+          "length": "0x2f0"
+        }
+      ]
+    }
   ]
 }

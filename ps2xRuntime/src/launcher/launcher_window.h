@@ -54,7 +54,6 @@ private:
         QString title;
         QString bootName;
         QString runnerName;
-        QString elfName;
         QString dataRelative;
         QString expectedSha256;
         bool selfExtracting = false;

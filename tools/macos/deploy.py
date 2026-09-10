@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build a native macOS bundle. Game data and saves stay outside the signed app."""
 import argparse
+import json
 import os
 from pathlib import Path
 import platform
@@ -10,6 +11,7 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
+CANONICAL_SERIAL = "SLUS_216.78"
 
 
 def run(*args, **kwargs):
@@ -26,10 +28,22 @@ def version(value):
 
 
 def variant_runner_name(serial):
-    """Return the stable launcher filename for a non-USA runner."""
-    if serial == "SLES_549.45":
-        return "bt3-runner-eu"
-    raise ValueError(f"unsupported launcher variant serial: {serial}")
+    """Look up the launcher filename for a runner in its variant descriptor.
+
+    games/bt3/variants/*.json is the single source of truth (the launcher's own
+    table is generated from the same files by tools/gen_variant_table.py), so a
+    new variant needs no change here.
+    """
+    path = ROOT / "games/bt3/variants" / f"{serial}.json"
+    if not path.is_file():
+        raise ValueError(f"no variant descriptor for {serial} ({path})")
+    launcher = json.loads(path.read_text()).get("launcher") or {}
+    runner = launcher.get("runner")
+    if not runner:
+        raise ValueError(f"{serial} has no launcher.runner in its descriptor")
+    if serial == CANONICAL_SERIAL:
+        raise ValueError(f"{serial} is the canonical runner; it is bundled by default")
+    return runner
 
 
 def audit(app, minimum):

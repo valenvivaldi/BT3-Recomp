@@ -4,11 +4,19 @@
   "base_serial": "SLUS_216.78",
   "role": "retail-alternate",
   "boot_elf_sha256": "98ff35e7962da9533ae7aa0b337ee316bc24527678a897c0e946db424153f228",
-  "vu1_manifest": "games/bt3/variants/SLES_549.45.vu1.json",
   "build_status": "requires-port",
+  "function_map": "games/bt3/work/SLES_549.45/functions.csv",
+  "vu1_manifest": "games/bt3/variants/SLES_549.45.vu1.json",
+  "overlay_map": "games/bt3/work/SLES_549.45/dbzp_functions_splat.csv",
   "required_inputs": [
-    "PAL DBZP overlay maps and patches",
+    "validation that the splat-derived DBZP overlay map matches PAL runtime hooks",
     "ported game-specific runtime overrides"
   ],
-  "notes": "The boot ELF and 12 DVP overlay sections are verified. A splat-derived 8,713-function map, PAL VU1 manifest, and preliminary 1,324-function DBZP map pass local generation; runtime overlay hooks still need PAL validation."
+  "launcher": {
+    "label": "Europe/Australia PAL (SLES-549.45)",
+    "runner": "bt3-runner-eu",
+    "data_dir": "data/SLES_549.45",
+    "self_extracting": false
+  },
+  "notes": "The boot ELF and its 7-program VU1 manifest are verified against the ELF's VIF MPG stream. The function map and the DBZP overlay map are splat-derived into the ignored per-variant work directory. The overlay is generated with gen_overlay.py --simple: the USA re-entry-label and gap-stitch tables are USA addresses and are not applied."
 }

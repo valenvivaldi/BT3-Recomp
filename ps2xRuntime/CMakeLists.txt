@@ -480,6 +480,18 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/src/runner_overlay/variants/${PS2X_RUNNER_VARIANT}")
     set(PS2X_VARIANT_INCLUDE_DIR
         "${CMAKE_CURRENT_SOURCE_DIR}/include/variants/${PS2X_RUNNER_VARIANT}")
+    # The value becomes a path segment. A typo would otherwise leave the globs
+    # below empty and silently link a runner with no generated game code.
+    if(NOT PS2X_RUNNER_VARIANT MATCHES "^[A-Za-z0-9_.-]+$")
+        message(FATAL_ERROR
+            "PS2X_RUNNER_VARIANT must be a bare serial, got '${PS2X_RUNNER_VARIANT}'")
+    endif()
+    if(NOT IS_DIRECTORY "${PS2X_RUNNER_SOURCE_DIR}")
+        message(FATAL_ERROR
+            "No generated sources for variant '${PS2X_RUNNER_VARIANT}' at "
+            "${PS2X_RUNNER_SOURCE_DIR}. Run games/bt3/setup.py --variant "
+            "${PS2X_RUNNER_VARIANT} first.")
+    endif()
     message(STATUS "ps2EntryRunner generated variant: ${PS2X_RUNNER_VARIANT}")
 endif()
 
