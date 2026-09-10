@@ -101,7 +101,7 @@ it bundles.
 | Serial | Region / role | Current state |
 | --- | --- | --- |
 | `SLUS-216.78` | USA, canonical | Playable. This is the default launcher selection and the only target shared by the cross-platform release instructions. |
-| `SLES-549.45` | Europe/Australia, PAL | Work in progress, opt-in behind `PS2X_SETUP_EXPERIMENTAL=1`. The ELF and VU1 manifest are verified and the runner builds from PAL-specific function and overlay maps, but the overlay map is unvalidated and the runtime overrides are not ported, so it stops before the company splash and is not playable. |
+| `SLES-549.45` | Europe/Australia, PAL | Work in progress, opt-in behind `PS2X_SETUP_EXPERIMENTAL=1`. The ELF and VU1 manifest are verified, the runner builds from PAL-specific function and overlay maps, and 167 of 181 recompiler stub bindings are re-based for the serial. It boots, initialises video and the kernel, and completes the sound middleware's `SJX_Init` with no error reported, then makes no further progress: nothing is rendered and the guest sits in its own heap allocator. The overlay map is still unvalidated and most runtime overrides are not ported. Not playable. |
 | `SLUS-219.78` | Alternate modified revision | Metadata is present as a separate port target. It still requires an exact input image, revision-specific maps, overlays, and runtime overrides; no runner is shipped yet. |
 
 Local disc dumps live outside the repository in `games/bt3/roms/<SERIAL>/`. In a

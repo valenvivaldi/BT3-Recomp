@@ -60,8 +60,23 @@ re-entry-label and gap-stitch tables inside `gen_overlay.py` are USA addresses,
 so a variant is generated with `gen_overlay.py --simple` from its own
 `overlay_map` (splat-derived, 1,324 functions for PAL) and none of the USA
 patches are applied. That map still needs validating against the PAL runtime
-hooks, and the game-specific runtime overrides are not ported, which is why the
-PAL runner boots the ELF and then stops before the company splash.
+hooks, and most game-specific runtime overrides are not ported.
+
+`transfer_symbols.py` re-bases the address-keyed recompiler stub bindings from
+`config.toml.in` onto a variant's own function map (167 of 181 for PAL; anything
+ambiguous is dropped and reported rather than guessed, because a wrong address
+replaces an unrelated function). `setup.py` runs it and splices the result into
+the generated `config.toml`.
+
+The PAL runner currently boots, initialises video and the kernel, creates its
+threads, registers its SIF RPC services and completes the sound middleware's
+`SJX_Init` -- the runtime's DTX/URPC emulation answers its commands once
+`applyBt3DtxCompat` is registered for the serial, which is safe because that
+layout holds a service id and a stride, not guest addresses. It then stops with
+nothing rendered, spending almost all its time in the guest's own first-fit heap
+allocator. Whether that is heavy init allocation or a free list that never
+terminates is the open question; see the variant descriptor for the full list of
+what is still missing.
 
 ## Build
 
