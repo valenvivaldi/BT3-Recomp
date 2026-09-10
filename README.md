@@ -11,8 +11,8 @@ image** — this repository contains no game code, assets, or media.
 
 ## Requirements
 
-- **Your own legally obtained BT3 USA ISO** (SLUS-21678). Other regions are not
-  supported — the committed function maps are for the USA executable.
+- **Your own legally obtained game ISO**. `SLUS-216.78` (USA) is the canonical
+  and default target; alternate serials have separate generated runners.
 - Linux, Windows or macOS (Windows/macOS experimental), x86-64 CPU with SSE4.1.
   On macOS the build is native arm64 (Apple Silicon) or x86-64, one at a time;
   see [the port notes](docs/MACOS-PORT.md).
@@ -87,6 +87,22 @@ bundled libraries against it. Homebrew bottles can require a recent macOS releas
 The signature is local/ad-hoc; Developer ID signing and notarization are not included.
 For development without a bundle, use `python3 games/bt3/setup.py /path/to/bt3-usa.iso --jobs 3`.
 See [deployment details](docs/DEPLOY.md#macos-app-experimental) for rebuilds and limitations.
+
+## ROM variants
+
+The project keeps the USA executable as the reference target. Each alternate
+serial has its own metadata, generated function maps, overlays, and runner; a
+different boot ELF cannot be used with the USA runner.
+
+| Serial | Region / role | Current state |
+| --- | --- | --- |
+| `SLUS-216.78` | USA, canonical | Playable. This is the default launcher selection and the only target shared by the cross-platform release instructions. |
+| `SLES-549.45` | Europe/Australia, PAL | The ELF, VU1 manifest, and PAL runner build successfully. It is selectable in the macOS launcher, but currently stops before the company splash and is not playable yet. |
+| `SLUS-219.78` | Alternate modified revision | Metadata is present as a separate port target. It still requires an exact input image, revision-specific maps, overlays, and runtime overrides; no runner is shipped yet. |
+
+ROM data is kept outside the repository under the serial-specific directories
+(`data/SLUS_216.78`, `data/SLES_549.45`, and so on). The launcher keeps
+`SLUS-216.78` as the default when no alternate variant is selected.
 
 ## Run
 

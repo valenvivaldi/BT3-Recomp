@@ -32,6 +32,18 @@ USA `SLUS_216.78` is the canonical and default target. Local disc dumps belong i
 lives in `variants/`. A second serial needs its own generated runner and address
 maps; it cannot use the USA runner by changing only the boot ELF.
 
+`SLES_549.45` (PAL) has a verified ELF and can already be translated by
+PS2Recomp using function boundaries from splat. Generate its local map with
+`splat_function_map.py` after splitting the PAL ELF; the remaining work is the
+PAL-specific DBZP overlay maps and runtime overrides. Its VU1 manifest can be
+regenerated from the ELF's `.DVP.overlay.*` sections with `vu1_manifest.py`. Do not use
+the USA maps, stubs, or patches for that probe.
+
+The PAL `BIN/DBZP.BIN` is also extractable and its executable range can be
+split into 1,324 functions and translated independently. The existing overlay
+hook table is still USA-specific, so that translation is a validation step and
+is not installed into the active runner yet.
+
 ## Build
 
 ```sh

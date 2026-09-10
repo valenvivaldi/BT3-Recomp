@@ -3699,7 +3699,18 @@ void GS::writeRegister(uint8_t regAddr, uint64_t value)
     recordRegisterDebugEventUnlocked(regAddr, value);
 }
 
-namespace ps2x_pgs { extern std::atomic<int> g_pgsProbeReq; extern std::atomic<unsigned> g_pgsProbeFbp, g_pgsProbeZbp; }   // [vramprobe]
+namespace ps2x_pgs {
+#if defined(PS2X_HAVE_PGS)
+extern std::atomic<int> g_pgsProbeReq;
+extern std::atomic<unsigned> g_pgsProbeFbp, g_pgsProbeZbp;
+#else
+// Keep the GS probe linkable when the optional paraLLEl-GS checkout is absent.
+// The probe writes remain no-ops in this configuration; the runtime header already
+// exposes the rest of the backend API as inline stubs.
+std::atomic<int> g_pgsProbeReq{0};
+std::atomic<unsigned> g_pgsProbeFbp{0}, g_pgsProbeZbp{0};
+#endif
+} // namespace ps2x_pgs   // [vramprobe]
 // [rtstale] page footprint of a VRAM region: bp in blocks, bw in 64-pixel units, an inclusive pixel box in `psm`
 // pixels. Pages per row follow the format's page width; a base that is not page aligned makes every block-table
 // index >= 32 land in the NEXT LINEAR page (page + 1), which is how addrPSMT4/8/CT32 resolve it -- not the next

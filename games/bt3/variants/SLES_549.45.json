@@ -3,13 +3,12 @@
   "title": "Dragon Ball Z: Budokai Tenkaichi 3 (Europe/Australia, PAL)",
   "base_serial": "SLUS_216.78",
   "role": "retail-alternate",
+  "boot_elf_sha256": "98ff35e7962da9533ae7aa0b337ee316bc24527678a897c0e946db424153f228",
+  "vu1_manifest": "games/bt3/variants/SLES_549.45.vu1.json",
   "build_status": "requires-port",
   "required_inputs": [
-    "verified boot ELF hash",
-    "function map generated from SLES_549.45",
-    "PAL VU1 program manifest",
     "PAL DBZP overlay maps and patches",
     "ported game-specific runtime overrides"
   ],
-  "notes": "Use USA as the behavioral baseline, but never reuse USA addresses."
+  "notes": "The boot ELF and 12 DVP overlay sections are verified. A splat-derived 8,713-function map, PAL VU1 manifest, and preliminary 1,324-function DBZP map pass local generation; runtime overlay hooks still need PAL validation."
 }

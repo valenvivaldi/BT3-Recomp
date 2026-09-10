@@ -55,8 +55,12 @@ RENAMES = [
 ]
 
 
-def make_wrapper_elf(dbzp: Path, dst: Path) -> None:
+def make_wrapper_elf(dbzp: Path, dst: Path, code_end: int | None = None) -> None:
     code = dbzp.read_bytes()
+    if code_end is not None:
+        if code_end < BASE or code_end - BASE > len(code):
+            raise SystemExit(f"overlay code end {code_end:#x} is outside {BASE:#x}..{BASE + len(code):#x}")
+        code = code[:code_end - BASE]
     size = len(code)
     EHDR, PHDR, SHENT = 52, 32, 40
     phoff = EHDR
@@ -262,12 +266,36 @@ def main() -> None:
                     help="overlay source directory (default: runtime/src/runner_overlay)")
     ap.add_argument("--header-dir", type=Path,
                     help="overlay header directory (default: runtime/include)")
+    ap.add_argument("--main-map", type=Path, default=HERE / "dbzp_funcs.csv",
+                    help="function map for the main overlay")
+    ap.add_argument("--code-end", type=lambda value: int(value, 0),
+                    help="exclusive guest address of executable overlay code")
+    ap.add_argument("--simple", action="store_true",
+                    help="emit only the main map; skip USA-specific re-entry/gap patches")
     args = ap.parse_args()
 
     work = args.work
     work.mkdir(parents=True, exist_ok=True)
     elf = work / "DBZP_wrapped.elf"
-    make_wrapper_elf(args.dbzp, elf)
+    make_wrapper_elf(args.dbzp, elf, args.code_end)
+
+    if args.simple:
+        outdir = work / "out_main"
+        run_recomp(args.recomp, elf, args.main_map, outdir, work)
+        main_cpp = apply_renames((outdir / "ps2_recompiled_functions.cpp").read_text())
+        reg = apply_renames((outdir / "register_functions.cpp").read_text())
+        header = (outdir / "ps2_recompiled_functions.h").read_text()
+        header = header.replace("PS2_RECOMPILED_FUNCTIONS_H", "PS2_OVERLAY_FUNCTIONS_H")
+        header = header.replace("// PS2_RECOMPILED_FUNCTIONS_H", "// PS2_OVERLAY_FUNCTIONS_H")
+        dst = args.output_dir or (args.runtime / "src" / "runner_overlay")
+        header_dir = args.header_dir or (args.runtime / "include")
+        dst.mkdir(parents=True, exist_ok=True)
+        (dst / "overlay_functions.cpp").write_text(main_cpp)
+        (dst / "overlay_register.cpp").write_text(reg)
+        (header_dir / "ps2_overlay_functions.h").parent.mkdir(parents=True, exist_ok=True)
+        (header_dir / "ps2_overlay_functions.h").write_text(header)
+        print(f"installed simple overlay sources -> {dst}")
+        return
 
     outs = {}
     for stem in ("dbzp_funcs", "dbzp_gaps", "dbzp_missing"):
