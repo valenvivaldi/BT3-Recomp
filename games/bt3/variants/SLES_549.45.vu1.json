@@ -1,0 +1,92 @@
+{
+  "_comment": "Generated from the user's ELF; offsets and hashes only.",
+  "elf_sha256": "98ff35e7962da9533ae7aa0b337ee316bc24527678a897c0e946db424153f228",
+  "image_size": "0x4000",
+  "programs": [
+    {
+      "id": "00-0492d545dc59311d",
+      "extent": "0x3f8",
+      "fnv1a64": "0x0492d545dc59311d",
+      "segments": [
+        {
+          "offset": "0x1c1688",
+          "length": "0x3f8"
+        }
+      ]
+    },
+    {
+      "id": "01-a0a38043aeaa231a",
+      "extent": "0x3e0",
+      "fnv1a64": "0xa0a38043aeaa231a",
+      "segments": [
+        {
+          "offset": "0x1c1a88",
+          "length": "0x3e0"
+        }
+      ]
+    },
+    {
+      "id": "03-7e8efb7575b22f69",
+      "extent": "0x328",
+      "fnv1a64": "0x7e8efb7575b22f69",
+      "segments": [
+        {
+          "offset": "0x1c2198",
+          "length": "0x328"
+        }
+      ]
+    },
+    {
+      "id": "04-0b7f264e0237b48e",
+      "extent": "0xc78",
+      "fnv1a64": "0x0b7f264e0237b48e",
+      "segments": [
+        {
+          "offset": "0x1c24c8",
+          "length": "0x800"
+        },
+        {
+          "offset": "0x1c2cd0",
+          "length": "0x478"
+        }
+      ]
+    },
+    {
+      "id": "06-05c48715b8434850",
+      "extent": "0xe18",
+      "fnv1a64": "0x05c48715b8434850",
+      "segments": [
+        {
+          "offset": "0x1c3ed8",
+          "length": "0x800"
+        },
+        {
+          "offset": "0x1c46e0",
+          "length": "0x618"
+        }
+      ]
+    },
+    {
+      "id": "07-ff81d66058071344",
+      "extent": "0x340",
+      "fnv1a64": "0xff81d66058071344",
+      "segments": [
+        {
+          "offset": "0x1c4d08",
+          "length": "0x340"
+        }
+      ]
+    },
+    {
+      "id": "08-28ce214c0c35fc68",
+      "extent": "0x2f0",
+      "fnv1a64": "0x28ce214c0c35fc68",
+      "segments": [
+        {
+          "offset": "0x1c5058",
+          "length": "0x2f0"
+        }
+      ]
+    }
+  ]
+}

@@ -17,6 +17,8 @@ option(PS2X_ENABLE_RUNTIME_LOGS "Enable PS2 runtime logs" OFF)
 option(PS2X_ENABLE_AGRESSIVE_LOGS "Enable very verbose/agressive PS2 runtime logs" OFF)
 option(PS2X_STRICT_RETURN_DIAGNOSTICS "Route generated JR $ra returns through runtime branch diagnostics" OFF)
 option(PS2X_SHOW_WINDOWS_CONSOLE "Show a console window for ps2EntryRunner on Windows release builds" ON)
+set(PS2X_RUNNER_VARIANT "default" CACHE STRING
+    "Generated runner variant (default keeps the canonical USA runner)")
 
 if(PS2X_ENABLE_SCCACHE)
     find_program(PS2X_SCCACHE_PROGRAM sccache)
@@ -467,14 +469,40 @@ target_sources(ps2_runtime PRIVATE
     ${KERNEL_SRC_FILES}
 )
 
+if(PS2X_RUNNER_VARIANT STREQUAL "default")
+    set(PS2X_RUNNER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/runner")
+    set(PS2X_OVERLAY_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/runner_overlay")
+    set(PS2X_VARIANT_INCLUDE_DIR "")
+else()
+    set(PS2X_RUNNER_SOURCE_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/runner/variants/${PS2X_RUNNER_VARIANT}")
+    set(PS2X_OVERLAY_SOURCE_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/runner_overlay/variants/${PS2X_RUNNER_VARIANT}")
+    set(PS2X_VARIANT_INCLUDE_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/variants/${PS2X_RUNNER_VARIANT}")
+    # The value becomes a path segment. A typo would otherwise leave the globs
+    # below empty and silently link a runner with no generated game code.
+    if(NOT PS2X_RUNNER_VARIANT MATCHES "^[A-Za-z0-9_.-]+$")
+        message(FATAL_ERROR
+            "PS2X_RUNNER_VARIANT must be a bare serial, got '${PS2X_RUNNER_VARIANT}'")
+    endif()
+    if(NOT IS_DIRECTORY "${PS2X_RUNNER_SOURCE_DIR}")
+        message(FATAL_ERROR
+            "No generated sources for variant '${PS2X_RUNNER_VARIANT}' at "
+            "${PS2X_RUNNER_SOURCE_DIR}. Run games/bt3/setup.py --variant "
+            "${PS2X_RUNNER_VARIANT} first.")
+    endif()
+    message(STATUS "ps2EntryRunner generated variant: ${PS2X_RUNNER_VARIANT}")
+endif()
+
 file(GLOB RUNNER_SRC_FILES CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/runner/*.cpp"
+    "${PS2X_RUNNER_SOURCE_DIR}/*.cpp"
 )
 
 # Recompiled DBZP.BIN overlay (the game code). Kept in a separate directory so the
 # boot ELF's runner sources are never touched. See src/runner_overlay/.
 file(GLOB RUNNER_OVERLAY_SRC_FILES CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/runner_overlay/*.cpp"
+    "${PS2X_OVERLAY_SOURCE_DIR}/*.cpp"
 )
 list(APPEND RUNNER_SRC_FILES ${RUNNER_OVERLAY_SRC_FILES})
 
@@ -490,6 +518,12 @@ endif()
 add_executable(ps2EntryRunner
     ${RUNNER_SRC_FILES}
 )
+
+if(PS2X_VARIANT_INCLUDE_DIR)
+    target_include_directories(ps2EntryRunner PRIVATE "${PS2X_VARIANT_INCLUDE_DIR}")
+    target_compile_definitions(ps2_runtime PRIVATE
+        PS2X_VU1_GENERATED_INCLUDE="variants/${PS2X_RUNNER_VARIANT}/vu1_jit_gen.inc")
+endif()
 
 # The overlay's single 20MB TU and its register file must not be unity-batched
 # with the boot ELF's sources (anon-namespace initializer name clash + huge TU).
@@ -552,6 +586,16 @@ target_link_libraries(ps2_runtime PUBLIC ps2_host_backend ffmpeg)
 # ps2xRuntime/third_party/parallel-gs is a git-ignored symlink/checkout of https://github.com/Arntzen-Software/parallel-gs
 set(PS2X_PGS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/parallel-gs" CACHE PATH "paraLLEl-GS checkout (with its Granite submodule)")
 option(PS2X_DISABLE_PGS "Do not build the paraLLEl-GS backend even if the checkout is present" OFF)
+# paraLLEl-GS does not compile on macOS: Granite's sleep_until_nsecs() uses
+# clock_nanosleep/TIMER_ABSTIME for everything that is not _WIN32, and macOS has
+# neither. Gate it on the platform rather than on a cache variable alone, so a
+# regenerated cache cannot silently turn it back on. PS2X_FORCE_PGS=ON opts in
+# (needs MoltenVK and a patched Granite).
+option(PS2X_FORCE_PGS "Build paraLLEl-GS even on platforms it is not known to support" OFF)
+if (APPLE AND NOT PS2X_FORCE_PGS)
+    set(PS2X_DISABLE_PGS ON)
+    set(PS2X_PGS_SKIP_REASON "not supported on macOS (Granite needs clock_nanosleep)")
+endif()
 if (EXISTS "${PS2X_PGS_DIR}/CMakeLists.txt" AND NOT PS2X_DISABLE_PGS)
     set(PARALLEL_GS_STANDALONE ON CACHE BOOL "" FORCE)
     add_subdirectory("${PS2X_PGS_DIR}" "${CMAKE_BINARY_DIR}/parallel-gs" EXCLUDE_FROM_ALL)
@@ -560,7 +604,16 @@ if (EXISTS "${PS2X_PGS_DIR}/CMakeLists.txt" AND NOT PS2X_DISABLE_PGS)
     target_compile_definitions(ps2_runtime PUBLIC PS2X_HAVE_PGS=1)
     message(STATUS "[pgs] paraLLEl-GS backend enabled from ${PS2X_PGS_DIR}")
 else()
-    message(STATUS "[pgs] paraLLEl-GS backend not built (no checkout at ${PS2X_PGS_DIR})")
+    # Say WHICH of the three reasons applies: the old message always blamed a
+    # missing checkout, including when the backend was deliberately disabled.
+    if (PS2X_PGS_SKIP_REASON)
+        set(_pgs_why "${PS2X_PGS_SKIP_REASON}")
+    elseif (PS2X_DISABLE_PGS)
+        set(_pgs_why "PS2X_DISABLE_PGS=ON")
+    else()
+        set(_pgs_why "no checkout at ${PS2X_PGS_DIR}")
+    endif()
+    message(STATUS "[pgs] paraLLEl-GS backend not built (${_pgs_why})")
 endif()
 target_link_libraries(ps2EntryRunner
     PRIVATE

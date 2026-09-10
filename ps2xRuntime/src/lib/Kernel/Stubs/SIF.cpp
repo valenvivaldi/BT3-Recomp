@@ -72,7 +72,16 @@ namespace ps2_stubs
         constexpr uint32_t kSifRegMainAddr = 0x80000000u;
         constexpr uint32_t kSifRegSubAddr = 0x80000001u;
         constexpr uint32_t kSifRegMsCom = 0x80000002u;
-        constexpr uint32_t kSifBootReadyMask = 0x00020000u;
+        // SMFLAG (reg 4) is how the IOP tells the EE how far its own boot got.
+        // There is no IOP here, so the HLE has to present it as fully booted.
+        // Reporting only CMDINIT was enough for USA, whose boot polls that bit,
+        // but the PAL executable waits on BOOTEND (0x2bb048 reads SifGetReg(4)
+        // and tests 0x40000) and spun forever: with no IOP, nothing ever set it.
+        constexpr uint32_t kSifStatSifInit = 0x00010000u;
+        constexpr uint32_t kSifStatCmdInit = 0x00020000u;
+        constexpr uint32_t kSifStatBootEnd = 0x00040000u;
+        constexpr uint32_t kSifBootReadyMask =
+            kSifStatSifInit | kSifStatCmdInit | kSifStatBootEnd;
 
         void seedDefaultSifRegsLocked()
         {

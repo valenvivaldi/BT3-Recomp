@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build (+ optional deploy) Dragon Ball Z: Budokai Tenkaichi 3 (SLUS_216.78, USA).
+"""Build (+ optional deploy) a registered Dragon Ball Z: Budokai Tenkaichi 3 variant.
 
     python3 games/bt3/setup.py <iso|elf> [--jobs N] [--deploy OUT] [--skip-setup]
 
@@ -19,6 +19,7 @@ sources, generate the overlay module, apply patches, build the runner.
 """
 import argparse
 import hashlib
+import json
 import os
 import shutil
 import stat
@@ -32,7 +33,8 @@ ROOT = HERE.parent.parent
 # instead of the host source tree. Defaults to <repo>/build.
 BUILD = Path(os.environ.get("PS2X_BUILD_DIR") or str(ROOT / "build"))
 WORK = HERE / "work"
-ELF_SHA256 = "811188ba9b416500d921cd4d9514df0cbf42f3a41a99cf5aac5a3da37171bf99"
+VARIANTS_DIR = HERE / "variants"
+DEFAULT_VARIANT = "SLUS_216.78"
 IS_WINDOWS = os.name == "nt"
 IS_MACOS = sys.platform == "darwin"
 # Generated TUs are huge; high job counts can exhaust RAM (16 GB: keep <= 3).
@@ -42,6 +44,81 @@ DEFAULT_JOBS = "3"
 def die(msg: str) -> None:
     print(f"ERROR: {msg}", file=sys.stderr)
     sys.exit(1)
+
+
+def load_variants() -> dict[str, dict]:
+    """Read committed, content-free variant descriptors keyed by PS2 serial."""
+    variants: dict[str, dict] = {}
+    for path in sorted(VARIANTS_DIR.glob("*.json")):
+        try:
+            item = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            die(f"cannot read variant descriptor {path}: {exc}")
+        serial = item.get("serial")
+        if serial is None:
+            # Per-variant auxiliary manifests (for example SLES_549.45.vu1.json)
+            # live beside the selectable variant descriptors.
+            continue
+        if not isinstance(serial, str) or not serial:
+            die(f"variant descriptor {path} has no serial")
+        if serial in variants:
+            die(f"duplicate variant descriptor for {serial}")
+        variants[serial] = item
+    if DEFAULT_VARIANT not in variants:
+        die(f"missing canonical variant descriptor: {DEFAULT_VARIANT}")
+    return variants
+
+
+def variant_input(variant: dict, key: str, default: Path | None) -> Path | None:
+    """Resolve a repo-relative input path recorded in a variant descriptor."""
+    value = variant.get(key)
+    return (ROOT / value) if value else default
+
+
+def rebase_stubs(variant: dict, serial: str, elf: Path, function_map: Path,
+                 work: Path, cfg_text: str) -> str:
+    """Re-point config.toml.in's stub bindings from the base variant onto this one.
+
+    [symxfer] The recompiler substitutes its own HLE for a stubbed function, and
+    the binding is `name@0xADDRESS`. Those addresses are the canonical variant's,
+    so reusing them for another serial does not merely miss: an address that
+    happens to start a different function there silently replaces that function
+    with an unrelated stub. Worse, the ones that DO miss leave the game's real
+    library code in place -- and that code talks to an IOP which does not exist,
+    which is why an un-rebased variant hangs in sceSifInitRpc polling for an IOP
+    acknowledgement that never arrives.
+    """
+    base = variant.get("base_serial")
+    if not base:
+        print(f"== {serial} has no base_serial; leaving the stub list untouched")
+        return cfg_text
+    base_variant = load_variants().get(base)
+    base_elf = WORK / base
+    base_map = variant_input(base_variant or {}, "function_map", None)
+    if not base_elf.is_file() or not base_map or not base_map.is_file():
+        die(f"{serial}: rebasing the stub list needs the base variant {base}'s ELF "
+            f"and function map ({base_elf}, {base_map}). Build {base} first, or "
+            f"record a variant stub list of your own.")
+    stubs_out = work / "stubs_rebased.txt"
+    run([sys.executable, HERE / "transfer_symbols.py",
+         "--from-elf", base_elf, "--from-map", base_map,
+         "--to-elf", elf, "--to-map", function_map,
+         "--output", work / "functions_named.csv",
+         "--rebase-stubs", HERE / "config.toml.in", "--stubs-out", stubs_out])
+    head, sep, rest = cfg_text.partition("stubs = [")
+    if not sep:
+        die("config.toml.in has no 'stubs = [' list to rebase")
+    _, closer, tail = rest.partition("]")
+    if not closer:
+        die("config.toml.in's stub list is not closed")
+    return head + "stubs = [\n" + stubs_out.read_text() + "]" + tail
+
+
+def print_variants(variants: dict[str, dict]) -> None:
+    for serial, item in variants.items():
+        base = item.get("base_serial")
+        suffix = f" (base: {base})" if base else ""
+        print(f"{serial}: {item.get('title', 'unnamed')} — {item.get('build_status', 'unknown')}{suffix}")
 
 
 def run(cmd, **kw) -> None:
@@ -112,12 +189,21 @@ def cmake_configure_extra() -> list:
     """-T only makes sense for the Visual Studio generator; a Ninja build directory (clang-cl via
     -DCMAKE_CXX_COMPILER=clang-cl) must not get it, or the reconfigure fails."""
     extra = ["-DCMAKE_BUILD_TYPE=Release"]   # explicit: a Windows Ninja/clang-cl configure came up Debug (/Od /RTC1 -MDd)
+    extra.append("-DPS2X_RUNNER_VARIANT=" + os.environ.get("PS2X_RUNNER_VARIANT", "default"))
     # ps2xStudio (the editor tool) fetches four git branches at configure time; a network hiccup there
     # aborted a user's whole game build (imgui_colortextedit populate failed, 2026-09-08). The game does
     # not need it: off unless PS2X_SETUP_STUDIO=1.
     extra.append("-DPS2X_BUILD_STUDIO=" + ("ON" if os.environ.get("PS2X_SETUP_STUDIO") == "1" else "OFF"))
     if IS_MACOS:
         extra += ["-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"]
+        # [pgs] paraLLEl-GS does not build on macOS: its Granite dependency's
+        # sleep_until_nsecs() falls back to clock_nanosleep/TIMER_ABSTIME for
+        # everything that is not _WIN32, and macOS has neither. CMake enables the
+        # backend whenever the submodule checkout exists, and setup.py fetches
+        # submodules, so without this a fresh macOS configure breaks the build.
+        # PS2X_SETUP_PGS=1 opts back in (needs MoltenVK and a patched Granite).
+        if os.environ.get("PS2X_SETUP_PGS") != "1":
+            extra.append("-DPS2X_DISABLE_PGS=ON")
         if os.environ.get("MACOSX_DEPLOYMENT_TARGET"):
             extra.append("-DCMAKE_OSX_DEPLOYMENT_TARGET=" + os.environ["MACOSX_DEPLOYMENT_TARGET"])
         if not (BUILD / "CMakeCache.txt").exists() and shutil.which("ninja"):
@@ -151,11 +237,24 @@ def configured() -> bool:
     project files, and `cmake --build` then dies with "MSB1009: Project file does not exist"."""
     if not (BUILD / "CMakeCache.txt").exists():
         return False
+    desired_variant = os.environ.get("PS2X_RUNNER_VARIANT", "default")
+    cache_text = (BUILD / "CMakeCache.txt").read_text(errors="replace")
+    if not any(line.startswith("PS2X_RUNNER_VARIANT:") and line.endswith("=" + desired_variant)
+               for line in cache_text.splitlines()):
+        return False
     if IS_MACOS and os.environ.get("MACOSX_DEPLOYMENT_TARGET"):
         cache = (BUILD / "CMakeCache.txt").read_text(errors="replace")
         desired = os.environ["MACOSX_DEPLOYMENT_TARGET"]
         if not any(line.startswith("CMAKE_OSX_DEPLOYMENT_TARGET:") and line.endswith("=" + desired)
                    for line in cache.splitlines()):
+            return False
+    if IS_MACOS:
+        # [pgs] A cache configured before the parallel-gs submodule was fetched
+        # has PS2X_DISABLE_PGS=OFF and no PGS targets; reusing it silently keeps
+        # the backend enabled on the next build and fails to compile Granite.
+        desired_pgs = "OFF" if os.environ.get("PS2X_SETUP_PGS") == "1" else "ON"
+        if not any(line.startswith("PS2X_DISABLE_PGS:") and line.endswith("=" + desired_pgs)
+                   for line in cache_text.splitlines()):
             return False
     if any((BUILD / f).exists() for f in ("build.ninja", "Makefile", "ALL_BUILD.vcxproj")):
         return True
@@ -234,8 +333,12 @@ def deploy_tree(runner: Path, out: Path) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(
         description="Build (and optionally deploy) Dragon Ball Z: Budokai Tenkaichi 3.")
+    ap.add_argument("--variant", default=DEFAULT_VARIANT, metavar="SERIAL",
+                    help=f"registered game serial to build (default {DEFAULT_VARIANT})")
+    ap.add_argument("--list-variants", action="store_true",
+                    help="list registered serials and their build status")
     ap.add_argument("src", nargs="?", metavar="<iso|elf>",
-                    help="BT3 USA ISO or bare SLUS_216.78 ELF (not needed with --skip-setup)")
+                    help="ISO or bare boot ELF for the selected variant (not needed with --skip-setup)")
     ap.add_argument("--jobs", default=DEFAULT_JOBS, metavar="N",
                     help=f"parallel jobs for the ps2EntryRunner build (default {DEFAULT_JOBS})")
     ap.add_argument("--deploy", metavar="OUT",
@@ -245,24 +348,84 @@ def main() -> None:
     ap.add_argument("--gen-only", action="store_true",
                     help="stop after recompile/generation/patches (steps 1-6); skip building the runner")
     args = ap.parse_args()
+    variants = load_variants()
+    if args.list_variants:
+        print_variants(variants)
+        return
+    variant = variants.get(args.variant)
+    if not variant:
+        die(f"unknown variant {args.variant}; use --list-variants")
+    experimental = variant.get("build_status") != "playable"
+    if experimental:
+        # A registered-but-unported variant is a probe, not a release target. It
+        # used to be refused outright, which also made the whole variant code
+        # path unreachable -- and hid the fact that its generation steps still
+        # need per-variant inputs. Building one is allowed, loudly and opt-in.
+        needs = variant.get("required_inputs", [])
+        detail = "".join(f"\n  - {n}" for n in needs)
+        print(f"WARNING: {args.variant} is a work-in-progress port target. It still needs:{detail}")
+        print(f"         USA {DEFAULT_VARIANT} remains the playable default.")
+        if os.environ.get("PS2X_SETUP_EXPERIMENTAL") != "1":
+            die(f"refusing to build {args.variant} without PS2X_SETUP_EXPERIMENTAL=1")
     if args.skip_setup and args.gen_only:
         die("--skip-setup and --gen-only are mutually exclusive")
 
     jobs = str(args.jobs)
+    canonical = args.variant == DEFAULT_VARIANT
+    os.environ["PS2X_RUNNER_VARIANT"] = "default" if canonical else args.variant
+    rt = ROOT / "ps2xRuntime"
+    if canonical:
+        runner_src_dir = rt / "src" / "runner"
+        overlay_src_dir = rt / "src" / "runner_overlay"
+        variant_include_dir = rt / "include"
+        vu_include = rt / "src" / "lib" / "vu1_jit_gen.inc"
+    else:
+        runner_src_dir = rt / "src" / "runner" / "variants" / args.variant
+        overlay_src_dir = rt / "src" / "runner_overlay" / "variants" / args.variant
+        variant_include_dir = rt / "include" / "variants" / args.variant
+        vu_include = variant_include_dir / "vu1_jit_gen.inc"
+
+    # The canonical target keeps the historical flat work/ layout (extracted disc
+    # tree + generated output). A variant gets work/<SERIAL>/ so its disc tree,
+    # its derived function map and its generated output cannot collide with USA's
+    # -- work/<SERIAL> used to be the boot ELF *file*, which left nowhere for the
+    # per-variant map splat_function_map.py is documented to write.
+    work = WORK if canonical else WORK / args.variant
+
+    # Per-variant recompiler inputs. These used to be hardcoded to the USA files,
+    # so a variant build would have recompiled its own ELF against USA addresses.
+    function_map = variant_input(variant, "function_map", HERE / "functions.csv" if canonical else None)
+    vu1_manifest = variant_input(variant, "vu1_manifest", HERE / "vu1_programs.json" if canonical else None)
+    overlay_map = variant_input(variant, "overlay_map", HERE / "dbzp_funcs.csv" if canonical else None)
+    # The overlay is the game code (BIN/DBZP.BIN), so a missing variant map would
+    # silently mean "generate this ELF against USA overlay addresses".
+    for key, path, hint in (
+        ("function_map", function_map, "splat_function_map.py against the variant's ELF"),
+        ("vu1_manifest", vu1_manifest, "vu1_manifest.py against the variant's ELF"),
+        ("overlay_map", overlay_map, "splat_function_map.py against the variant's BIN/DBZP.BIN"),
+    ):
+        if path is None:
+            die(f"{args.variant}: no \"{key}\" recorded in variants/{args.variant}.json.\n"
+                f"A variant must not reuse the USA inputs. Generate one with {hint}\n"
+                f"and record its repo-relative path in the descriptor.")
+        if not path.is_file():
+            die(f"{args.variant}: \"{key}\" points at {path}, which does not exist.\n"
+                f"Generate it with {hint}.")
+
     if args.skip_setup:
-        if not (WORK / "SLUS_216.78").is_file():
-            die("--skip-setup requires an existing games/bt3/work/ (no SLUS_216.78 found)")
+        if not (work / args.variant).is_file():
+            die(f"--skip-setup requires an existing {work}/ (no {args.variant} found)")
         src = None
-        elf = WORK / "SLUS_216.78"
+        elf = work / args.variant
     else:
         if not args.src:
             ap.print_usage(sys.stderr)
-            die("missing the BT3 ISO or SLUS_216.78 ELF path")
+            die(f"missing the ISO or bare {args.variant} ELF path")
         src = Path(args.src).resolve()
         if not src.exists():
             die(f"{src} does not exist")
-        WORK.mkdir(parents=True, exist_ok=True)
-        elf = WORK / "SLUS_216.78"
+        work.mkdir(parents=True, exist_ok=True)
+        elf = work / args.variant
 
     # 1. Obtain the game files. The runtime reads loose files (BIN/DBZP.BIN, IRX/,
     #    DATA/) from the directory the ELF lives in, so extract the WHOLE ISO tree.
@@ -270,25 +433,35 @@ def main() -> None:
         kind, exe = find_extractor()
         print(f"== extracting ISO contents (~4 GB) with {exe}")
         if kind == "tar":
-            run([exe, "-xf", src, "-C", WORK])
+            run([exe, "-xf", src, "-C", work])
         else:
-            run([exe, "x", "-y", f"-o{WORK}", src], stdout=subprocess.DEVNULL)
+            run([exe, "x", "-y", f"-o{work}", src], stdout=subprocess.DEVNULL)
         if not elf.is_file():
-            die("SLUS_216.78 not found in ISO (is this the USA release?)")
-        make_writable(WORK)
+            die(f"{args.variant} not found in ISO (is this the selected release?)")
+        make_writable(work)
     elif not args.skip_setup:
+        # An earlier ISO extraction leaves the whole tree read-only (ISO9660), so
+        # copying a bare ELF over a previous run's copy fails on the open. Make
+        # the tree writable first -- the game itself opens BIN/DBZP.BIN
+        # read-write, so this is needed for anything the user dropped in too.
+        if work.exists():
+            make_writable(work)
         shutil.copyfile(src, elf)
+        make_writable(work)
         print("NOTE: you passed a bare ELF. The game also needs the ISO's BIN/, IRX/")
-        print(f"      and DATA/ directories next to it in {WORK}.")
+        print(f"      and DATA/ directories next to it in {work}.")
 
     if args.skip_setup:
-        print("--skip-setup: reusing existing games/bt3/work/ and generated sources")
+        print(f"--skip-setup: reusing existing {work}/ and generated sources")
     else:
-        # 2. Verify it is the expected USA ELF.
+        # 2. Verify the exact boot ELF for this registered variant.
         got = sha256_of(elf)
-        if got != ELF_SHA256:
-            print(f"ERROR: ELF sha256 mismatch.\n  expected: {ELF_SHA256}\n  got:      {got}")
-            print("Only the USA release (SLUS-21678) is supported. Set PS2X_SETUP_FORCE=1 to continue anyway.")
+        expected_sha256 = variant.get("boot_elf_sha256")
+        if not expected_sha256:
+            die(f"{args.variant} has no registered boot ELF hash")
+        if got != expected_sha256:
+            print(f"ERROR: ELF sha256 mismatch.\n  expected: {expected_sha256}\n  got:      {got}")
+            print(f"Set PS2X_SETUP_FORCE=1 to continue with an unverified {args.variant} ELF.")
             if os.environ.get("PS2X_SETUP_FORCE") != "1":
                 sys.exit(1)
 
@@ -299,7 +472,7 @@ def main() -> None:
     print("== generating VU1 programs from the ELF")
     sys.path.insert(0, str(HERE))
     from vu1_programs import generate as generate_vu1
-    generate_vu1(elf, ROOT / "ps2xRuntime", WORK / "vu1")
+    generate_vu1(elf, rt, work / "vu1", manifest=vu1_manifest, output=vu_include)
 
     # 3. Configure + build the recompiler. Configure only once: the globs use
     #    CONFIGURE_DEPENDS, so later builds re-run cmake by themselves when the
@@ -327,33 +500,49 @@ def main() -> None:
         print("== generating runner sources")
         sys.path.insert(0, str(HERE))
         from split_functions import split_csv
-        split = WORK / "functions_split.csv"
-        split_csv(elf, HERE / "functions.csv", split)
-        out = WORK / "output"
+        split = work / "functions_split.csv"
+        split_csv(elf, function_map, split)
+        out = work / "output"
         if out.exists():
             shutil.rmtree(out)
         cfg_text = (HERE / "config.toml.in").read_text()
+        if not canonical:
+            cfg_text = rebase_stubs(variant, args.variant, elf, function_map, work, cfg_text)
         cfg_text = (cfg_text.replace("@ELF@", elf.as_posix())
                             .replace("@CSV@", split.as_posix())
                             .replace("@OUT@", out.as_posix() + "/"))
-        (WORK / "config.toml").write_text(cfg_text)
-        run([recomp, WORK / "config.toml"])
+        (work / "config.toml").write_text(cfg_text)
+        run([recomp, work / "config.toml"])
 
         # 5. Post-generation patches + the overlay module from DBZP.BIN.
-        run([sys.executable, HERE / "apply_patches.py", out])
+        #    apply_patches.py and apply_overlay_patches.py are anchored to USA
+        #    generated output and exit loudly when an anchor is missing, so they
+        #    only run for the canonical target.
+        if args.variant == DEFAULT_VARIANT:
+            run([sys.executable, HERE / "apply_patches.py", out])
+        else:
+            print(f"== skipping apply_patches.py ({args.variant} has no ported source patches)")
         print("== generating overlay sources from BIN/DBZP.BIN")
-        run([sys.executable, HERE / "gen_overlay.py",
-             "--recomp", recomp, "--dbzp", WORK / "BIN" / "DBZP.BIN",
-             "--work", WORK / "overlay", "--runtime", ROOT / "ps2xRuntime"])
-        run([sys.executable, HERE / "apply_overlay_patches.py", ROOT / "ps2xRuntime"])
+        overlay_cmd = [sys.executable, HERE / "gen_overlay.py",
+                       "--recomp", recomp, "--dbzp", work / "BIN" / "DBZP.BIN",
+                       "--work", work / "overlay", "--runtime", rt,
+                       "--output-dir", overlay_src_dir, "--header-dir", variant_include_dir,
+                       "--main-map", overlay_map]
+        if args.variant == DEFAULT_VARIANT:
+            run(overlay_cmd)
+            run([sys.executable, HERE / "apply_overlay_patches.py", rt])
+        else:
+            # The re-entry-label and gap-stitch tables in gen_overlay.py are USA
+            # addresses; --simple emits just the main map for the variant.
+            run(overlay_cmd + ["--simple"])
 
         # 6. Install into the runtime tree.
         print("== installing runner sources")
-        rt = ROOT / "ps2xRuntime"
-        sync_tree(out, rt / "src" / "runner",
+        sync_tree(out, runner_src_dir,
                   exclude=("ps2_recompiled_functions.h", "ps2_recompiled_stubs.h"))
         for h in ("ps2_recompiled_functions.h", "ps2_recompiled_stubs.h"):
-            shutil.copyfile(out / h, rt / "include" / h)
+            variant_include_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(out / h, variant_include_dir / h)
 
     if args.gen_only:
         print("--gen-only: runner + overlay sources generated (skipping runner build)")
@@ -369,7 +558,7 @@ def main() -> None:
     need_cfg = not configured()
     if not need_cfg:
         ct = cache.stat().st_mtime
-        for d in (rt / "src" / "runner", rt / "src" / "runner_overlay"):
+        for d in (runner_src_dir, overlay_src_dir):
             if d.exists() and d.stat().st_mtime > ct:
                 need_cfg = True
                 break

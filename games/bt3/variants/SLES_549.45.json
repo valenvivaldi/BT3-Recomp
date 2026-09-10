@@ -1,0 +1,24 @@
+{
+  "serial": "SLES_549.45",
+  "title": "Dragon Ball Z: Budokai Tenkaichi 3 (Europe/Australia, PAL)",
+  "base_serial": "SLUS_216.78",
+  "role": "retail-alternate",
+  "boot_elf_sha256": "98ff35e7962da9533ae7aa0b337ee316bc24527678a897c0e946db424153f228",
+  "build_status": "requires-port",
+  "function_map": "games/bt3/work/SLES_549.45/functions.csv",
+  "vu1_manifest": "games/bt3/variants/SLES_549.45.vu1.json",
+  "overlay_map": "games/bt3/work/SLES_549.45/dbzp_functions_splat.csv",
+  "required_inputs": [
+    "diagnose the current stop: ~91% of samples sit in the guest's first-fit heap allocator (0x2555B0 walks the free list, 0x255790 is the caller's fit loop). Unknown whether this is legitimately heavy init allocation or a free list that never terminates; instrumenting the walk is the next step",
+    "re-based BT3 sceMpeg callback stubs (0x00297DD0, 0x0029C250), NULL packet-list guard (0x00113478, 0x00114860) and CD read-state edge guard (0x00270DD0) -- all USA-keyed but few enough addresses to re-base with the transfer_symbols.py anchors",
+    "the 10 default-on hooks of applyBt3SoundInitBypass (file-load poll, frame kick, resource-ready, DVCI slot completion, fast-timer compare, five pad entry points). The function carries 68 USA guest addresses in total, but the other 58 are behind PS2X_* debug env gates that a variant bring-up does not need",
+    "the 14 stub bindings transfer_symbols.py cannot re-base unambiguously (__divdi3, mceGetInfoApdx, sceCdInitEeCB, sceDeci2ExReqSend, sceMcChangeThreadPriority, sceMcChdir, six sceMpeg entry points, sceSifLoadElf, sceVu0DropShadowMatrix)"
+  ],
+  "launcher": {
+    "label": "Europe/Australia PAL (SLES-549.45)",
+    "runner": "bt3-runner-eu",
+    "data_dir": "data/SLES_549.45",
+    "self_extracting": false
+  },
+  "notes": "The boot ELF, its 7-program VU1 manifest and 167 of 181 recompiler stub bindings are derived for this serial. It boots, initialises video and the kernel, creates its threads, registers its SIF RPC services, enumerates the DVCI file table and completes SJX_Init: the sound middleware's DTX creation is served by the runtime's DTX/URPC emulation (SJX_CREATE, SJX_REINIT, SJRMT_UNI_CREATE are answered), and no E0xxxxxx error is reported any more. It then makes no further progress: DMA/GIF stop at 4 transfers, GAME=0, swaps/sec=0, nothing is rendered, and the guest spends almost all of its time in its own heap allocator. Not playable. Earlier revisions of this file claimed E0100302 required porting applyBt3SoundInitBypass; that was wrong -- none of that override's default-on hooks touch IOP heap or DTX, and the actual fix was registering the region-independent applyBt3DtxCompat (service id only, no guest addresses) for this serial."
+}

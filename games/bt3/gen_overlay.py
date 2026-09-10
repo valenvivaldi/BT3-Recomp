@@ -55,8 +55,12 @@ RENAMES = [
 ]
 
 
-def make_wrapper_elf(dbzp: Path, dst: Path) -> None:
+def make_wrapper_elf(dbzp: Path, dst: Path, code_end: int | None = None) -> None:
     code = dbzp.read_bytes()
+    if code_end is not None:
+        if code_end < BASE or code_end - BASE > len(code):
+            raise SystemExit(f"overlay code end {code_end:#x} is outside {BASE:#x}..{BASE + len(code):#x}")
+        code = code[:code_end - BASE]
     size = len(code)
     EHDR, PHDR, SHENT = 52, 32, 40
     phoff = EHDR
@@ -252,23 +256,66 @@ def register_mid_function_entries(lines: list, reg: str, addrs) -> tuple:
     return lines, reg
 
 
+def write_if_changed(path: Path, text: str) -> None:
+    """Write only on change: an untouched mtime keeps incremental builds cheap."""
+    if not path.is_file() or path.read_text() != text:
+        path.write_text(text)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--recomp", required=True, type=Path)
     ap.add_argument("--dbzp", required=True, type=Path)
     ap.add_argument("--work", required=True, type=Path)
     ap.add_argument("--runtime", required=True, type=Path)
+    ap.add_argument("--output-dir", type=Path,
+                    help="overlay source directory (default: runtime/src/runner_overlay)")
+    ap.add_argument("--header-dir", type=Path,
+                    help="overlay header directory (default: runtime/include)")
+    ap.add_argument("--main-map", type=Path, default=HERE / "dbzp_funcs.csv",
+                    help="function map for the main overlay")
+    ap.add_argument("--code-end", type=lambda value: int(value, 0),
+                    help="exclusive guest address of executable overlay code")
+    ap.add_argument("--simple", action="store_true",
+                    help="emit only the main map; skip USA-specific re-entry/gap patches")
     args = ap.parse_args()
 
     work = args.work
     work.mkdir(parents=True, exist_ok=True)
     elf = work / "DBZP_wrapped.elf"
-    make_wrapper_elf(args.dbzp, elf)
+    make_wrapper_elf(args.dbzp, elf, args.code_end)
+
+    if args.simple:
+        outdir = work / "out_main"
+        run_recomp(args.recomp, elf, args.main_map, outdir, work)
+        main_cpp = apply_renames((outdir / "ps2_recompiled_functions.cpp").read_text())
+        reg = apply_renames((outdir / "register_functions.cpp").read_text())
+        header = (outdir / "ps2_recompiled_functions.h").read_text()
+        header = header.replace("PS2_RECOMPILED_FUNCTIONS_H", "PS2_OVERLAY_FUNCTIONS_H")
+        header = header.replace("// PS2_RECOMPILED_FUNCTIONS_H", "// PS2_OVERLAY_FUNCTIONS_H")
+        dst = args.output_dir or (args.runtime / "src" / "runner_overlay")
+        header_dir = args.header_dir or (args.runtime / "include")
+        dst.mkdir(parents=True, exist_ok=True)
+        header_dir.mkdir(parents=True, exist_ok=True)
+        # Write only on change: an untouched mtime lets incremental builds skip
+        # recompiling these (overlay_functions.cpp is a ~20 MB TU).
+        write_if_changed(dst / "overlay_functions.cpp", main_cpp)
+        write_if_changed(dst / "overlay_register.cpp", reg)
+        write_if_changed(header_dir / "ps2_overlay_functions.h", header)
+        # The non-simple path emits extra gap modules into the same directory and
+        # CMake globs it, so a directory switched to --simple must not keep them.
+        for stale in ("f_gaps_extra.cpp", "f_3376b8_extra.cpp"):
+            (dst / stale).unlink(missing_ok=True)
+        print(f"installed simple overlay sources -> {dst}")
+        return
 
     outs = {}
     for stem in ("dbzp_funcs", "dbzp_gaps", "dbzp_missing"):
         outdir = work / f"out_{stem}"
-        run_recomp(args.recomp, elf, HERE / f"{stem}.csv", outdir, work)
+        # The main map is selectable (--main-map); the gap/missing maps are the
+        # USA Ghidra-truncation fixups this path exists for.
+        csv = args.main_map if stem == "dbzp_funcs" else HERE / f"{stem}.csv"
+        run_recomp(args.recomp, elf, csv, outdir, work)
         outs[stem] = outdir
 
     # Main overlay module: renames + re-entry labels.
@@ -306,21 +353,16 @@ def main() -> None:
     header = header.replace("PS2_RECOMPILED_FUNCTIONS_H", "PS2_OVERLAY_FUNCTIONS_H")
     header = header.replace("// PS2_RECOMPILED_FUNCTIONS_H", "// PS2_OVERLAY_FUNCTIONS_H")
 
-    def install(path: Path, text: str) -> None:
-        # Write only on change: an untouched mtime lets incremental builds skip
-        # recompiling these (one of them is a 487K-line TU).
-        if not path.is_file() or path.read_text() != text:
-            path.write_text(text)
-
     lines, reg = register_mid_function_entries(lines, reg, MID_FUNCTION_ENTRIES)
 
-    dst = args.runtime / "src" / "runner_overlay"
+    dst = args.output_dir or (args.runtime / "src" / "runner_overlay")
+    header_dir = args.header_dir or (args.runtime / "include")
     dst.mkdir(parents=True, exist_ok=True)
-    install(dst / "overlay_functions.cpp", "".join(lines))
-    install(dst / "overlay_register.cpp", reg)
-    install(dst / "f_gaps_extra.cpp", gaps_cpp)
-    install(dst / "f_3376b8_extra.cpp", missing_cpp)
-    install(args.runtime / "include" / "ps2_overlay_functions.h", header)
+    write_if_changed(dst / "overlay_functions.cpp", "".join(lines))
+    write_if_changed(dst / "overlay_register.cpp", reg)
+    write_if_changed(dst / "f_gaps_extra.cpp", gaps_cpp)
+    write_if_changed(dst / "f_3376b8_extra.cpp", missing_cpp)
+    write_if_changed(header_dir / "ps2_overlay_functions.h", header)
     print(f"installed overlay sources -> {dst}")
 
 

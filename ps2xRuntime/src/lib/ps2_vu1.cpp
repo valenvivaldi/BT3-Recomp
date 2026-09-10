@@ -4078,11 +4078,21 @@ void VU1Interpreter::jitStatPrint()   // [jitstat]
 #include "vu1_jit_ops.inc"
 // [vu1manifest] the translated microprograms are generated from the user's ELF by games/bt3/vu1_programs.py
 // (git-ignored). A tree without the game builds with an empty table: every program runs in the interpreter.
-#if __has_include("vu1_jit_gen.inc")
-#include "vu1_jit_gen.inc"
-#else
+// __has_include() must not even be parsed when the macro is undefined: its argument is
+// a header-name, not an expression, so `&&` does not short-circuit the syntax error.
+#if defined(PS2X_VU1_GENERATED_INCLUDE)
+#  if __has_include(PS2X_VU1_GENERATED_INCLUDE)
+#    include PS2X_VU1_GENERATED_INCLUDE
+#    define PS2X_VU1_HAVE_GENERATED 1
+#  endif
+#endif
+#if !defined(PS2X_VU1_HAVE_GENERATED)
+#  if __has_include("vu1_jit_gen.inc")
+#    include "vu1_jit_gen.inc"
+#  else
 namespace vujit {
 const Prog kPrograms[1] = {};
 const int kProgramCount = 0;
 }
+#  endif
 #endif

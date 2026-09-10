@@ -34,6 +34,29 @@ FetchContent_MakeAvailable(glfw)
 file(GLOB LAUNCHER_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 
+# ROM-variant table. games/bt3/variants/*.json is the single source of truth for
+# serials, boot-ELF hashes, labels, runner filenames and data directories; the
+# launcher cannot read the repository at runtime, so the table is generated here
+# and #included by launcher_window.cpp. Touching a descriptor re-runs cmake.
+set(PS2X_VARIANTS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../games/bt3/variants")
+set(PS2X_VARIANT_TABLE_GEN
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/gen_variant_table.py")
+file(GLOB PS2X_VARIANT_DESCRIPTORS "${PS2X_VARIANTS_DIR}/*.json")
+# Reconfigure when a descriptor *or* the generator itself changes.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    ${PS2X_VARIANT_DESCRIPTORS} "${PS2X_VARIANT_TABLE_GEN}")
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+execute_process(
+    COMMAND "${Python3_EXECUTABLE}" "${PS2X_VARIANT_TABLE_GEN}"
+            "${PS2X_VARIANTS_DIR}"
+            "${CMAKE_CURRENT_BINARY_DIR}/generated/variant_table.inc"
+    RESULT_VARIABLE PS2X_VARIANT_TABLE_RESULT
+    OUTPUT_VARIABLE PS2X_VARIANT_TABLE_OUTPUT
+    ERROR_VARIABLE PS2X_VARIANT_TABLE_OUTPUT)
+if(NOT PS2X_VARIANT_TABLE_RESULT EQUAL 0)
+    message(FATAL_ERROR "gen_variant_table.py failed: ${PS2X_VARIANT_TABLE_OUTPUT}")
+endif()
+
 add_executable(Launcher ${LAUNCHER_SOURCES})
 if(APPLE)
     if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
@@ -59,7 +82,8 @@ endif()
 target_include_directories(Launcher PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/..
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../include)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../include
+    ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
 target_link_libraries(Launcher PRIVATE
     Qt${QT_VERSION_MAJOR}::Core

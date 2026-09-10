@@ -123,9 +123,9 @@ PATCHES = [
 ]
 
 
-def apply(runtime_dir: Path) -> int:
+def apply(runtime_dir: Path, overlay_dir: Path | None = None) -> int:
     failures = 0
-    overlay_dir = runtime_dir / "src" / "runner_overlay"
+    overlay_dir = overlay_dir or (runtime_dir / "src" / "runner_overlay")
     for patch in PATCHES:
         path = overlay_dir / patch["file"]
         if not path.is_file():
@@ -160,7 +160,9 @@ def apply(runtime_dir: Path) -> int:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
+    if len(sys.argv) not in (2, 3):
         print(__doc__, file=sys.stderr)
         sys.exit(2)
-    sys.exit(1 if apply(Path(sys.argv[1])) else 0)
+    runtime = Path(sys.argv[1])
+    overlay = Path(sys.argv[2]) if len(sys.argv) == 3 else None
+    sys.exit(1 if apply(runtime, overlay) else 0)

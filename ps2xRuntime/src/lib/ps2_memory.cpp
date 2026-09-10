@@ -2375,7 +2375,9 @@ void PS2Memory::arbiterDrainOrHandoff()
 void PS2Memory::stage2Loop()
 {
     ps2xEeProfAddCurrentThread("GsThread");   // [eeprof]
-#if !defined(_WIN32)
+#if defined(__APPLE__)
+    pthread_setname_np("GsThread");                  // macOS takes only the name
+#elif !defined(_WIN32)
     pthread_setname_np(pthread_self(), "GsThread");   // visible to perf/top
 #endif
     uint64_t accNs = 0;

@@ -1,0 +1,18 @@
+{
+  "serial": "SLUS_219.78",
+  "title": "Dragon Ball Z: Budokai Tenkaichi 3 (B14 Rev2 fan mod)",
+  "base_serial": "SLUS_216.78",
+  "role": "modified-alternate",
+  "boot_elf_sha256": "224525c5639c00e01c2604c4685d307bc739c041000dcf8c69a4f884f465e8a4",
+  "build_status": "requires-port",
+  "function_map": "games/bt3/work/SLUS_219.78/functions.csv",
+  "vu1_manifest": "games/bt3/work/SLUS_219.78/vu1-generated.json",
+  "overlay_map": "games/bt3/work/SLUS_219.78/dbzp_functions_usa.csv",
+  "required_inputs": [
+    "derive and validate an EE function map for the mod revision (the current probe copies USA boundaries)",
+    "validate the generated 9-program VU1 manifest against BT4 execution",
+    "derive and validate the DBZ4.BIN overlay map and hooks (the current probe uses DBZP.BIN and USA boundaries)",
+    "ported game-specific runtime overrides"
+  ],
+  "notes": "The mod ISO contains DBZP.BIN plus DBZ4.BIN. The experimental runner builds and boots from the mod ELF, loads the IOP modules, and passes DTX/SJX initialisation after registering the region-independent DTX compatibility override. It then remains before the first rendered frame with dma/gif around 1,700 and the guest allocator as the hot path. The EE and overlay maps are still provisional USA copies, so this is not a validated port and has no launcher profile."
+}

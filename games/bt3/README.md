@@ -7,8 +7,9 @@ repository contains no game code, assets, or media.
 
 ## Requirements
 
-- Your own legally obtained BT3 USA ISO (SLUS-21678). Other regions are not supported
-  (the committed function map is for the USA ELF).
+- Your own legally obtained BT3 ISO. USA (SLUS-21678) is the canonical target and
+  the only playable one; the committed function map is for the USA ELF. See
+  [ROM variants](#rom-variants) for the state of the other serials.
 - Linux, x86-64 CPU with SSE4.1, ~16 GB RAM and ~10 GB free disk for the build.
 - `cmake`, a C++20 compiler, `python3`, `rsync`, `bsdtar` or `7z`, pkg-config,
   the FFmpeg development libraries, and (to build the raylib backend) the
@@ -24,6 +25,66 @@ repository contains no game code, assets, or media.
   ```sh
   sudo pacman -S --needed base-devel cmake git python rsync libarchive ffmpeg
   ```
+
+## ROM variants
+
+USA `SLUS_216.78` is the canonical and default target. Local disc dumps belong in
+[`roms/<SERIAL>/`](roms/README.md), while versioned metadata for every variant
+lives in `variants/` — those descriptors are the single source of truth for
+serials, boot-ELF hashes, per-variant recompiler inputs and launcher profiles
+(`tools/gen_variant_table.py` generates the launcher's table from them). A second
+serial needs its own generated runner and address maps; it cannot use the USA
+runner by changing only the boot ELF.
+
+Extracted disc trees and generated output live in `work/` for USA and in
+`work/<SERIAL>/` for every other variant.
+
+`SLES_549.45` (PAL) has a verified ELF and can already be translated by
+PS2Recomp using function boundaries from splat. Generate its local map with
+`splat_function_map.py` after splitting the PAL ELF, into the per-variant work
+directory the descriptor points at (`games/bt3/work/SLES_549.45/functions.csv`).
+Its VU1 manifest is committed as `variants/SLES_549.45.vu1.json`; regenerate it
+from the ELF with `vu1_manifest.py`. Do not use the USA maps, stubs, or patches
+for that probe — `setup.py` refuses to start a variant build that has not
+recorded its own `function_map` and `vu1_manifest`.
+
+Building a work-in-progress target is opt-in:
+
+```sh
+PS2X_SETUP_EXPERIMENTAL=1 python3 games/bt3/setup.py \
+    games/bt3/roms/SLES_549.45/SLES_549.45.iso --variant SLES_549.45
+```
+
+`BIN/DBZP.BIN` is the game code. The committed `dbzp_funcs.csv` and the
+re-entry-label and gap-stitch tables inside `gen_overlay.py` are USA addresses,
+so a variant is generated with `gen_overlay.py --simple` from its own
+`overlay_map` (splat-derived, 1,324 functions for PAL) and none of the USA
+patches are applied. That map still needs validating against the PAL runtime
+hooks, and most game-specific runtime overrides are not ported.
+
+`transfer_symbols.py` re-bases the address-keyed recompiler stub bindings from
+`config.toml.in` onto a variant's own function map (167 of 181 for PAL; anything
+ambiguous is dropped and reported rather than guessed, because a wrong address
+replaces an unrelated function). `setup.py` runs it and splices the result into
+the generated `config.toml`.
+
+The PAL runner currently boots, initialises video and the kernel, creates its
+threads, registers its SIF RPC services and completes the sound middleware's
+`SJX_Init` -- the runtime's DTX/URPC emulation answers its commands once
+`applyBt3DtxCompat` is registered for the serial, which is safe because that
+layout holds a service id and a stride, not guest addresses. It then stops with
+nothing rendered, spending almost all its time in the guest's own first-fit heap
+allocator. Whether that is heavy init allocation or a free list that never
+terminates is the open question; see the variant descriptor for the full list of
+what is still missing.
+
+The `SLUS_219.78` BT4 B14 Rev2 probe also builds and boots far enough to load
+the IOP modules and complete DTX/SJX initialisation. It currently uses copied
+USA EE and DBZP maps, while the ISO also contains a separate `DBZ4.BIN`; after
+about 45–60 seconds it remains before the first rendered frame with DMA/GIF
+around 1,700. This confirms the shared DTX compatibility path but does not yet
+constitute a playable or validated BT4 port. Its current state and required
+inputs are recorded in `variants/SLUS_219.78.json`.
 
 ## Build
 
