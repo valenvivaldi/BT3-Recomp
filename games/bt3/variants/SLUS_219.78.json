@@ -3,13 +3,16 @@
   "title": "Dragon Ball Z: Budokai Tenkaichi 3 (B14 Rev2 fan mod)",
   "base_serial": "SLUS_216.78",
   "role": "modified-alternate",
+  "boot_elf_sha256": "224525c5639c00e01c2604c4685d307bc739c041000dcf8c69a4f884f465e8a4",
   "build_status": "requires-port",
+  "function_map": "games/bt3/work/SLUS_219.78/functions.csv",
+  "vu1_manifest": "games/bt3/work/SLUS_219.78/vu1-generated.json",
+  "overlay_map": "games/bt3/work/SLUS_219.78/dbzp_functions_usa.csv",
   "required_inputs": [
-    "exact mod revision hash (no \"boot_elf_sha256\" recorded yet)",
-    "function map generated from that revision",
-    "variant VU1 program manifest",
-    "variant DBZP overlay map",
+    "validate the copied USA function map against the mod's changed code",
+    "validate the generated 9-program VU1 manifest",
+    "validate the copied USA DBZP overlay map and hooks",
     "ported game-specific runtime overrides"
   ],
-  "notes": "A mod revision is a separate target even when it derives from a USA release. No launcher profile: nothing is built or shipped for it yet."
+  "notes": "The mod ISO contains the usual DBZP.BIN plus DBZ4.BIN. This first probe copies the USA EE and DBZP maps so the generated runner can test binary compatibility; it is not a validated port and has no launcher profile."
 }
