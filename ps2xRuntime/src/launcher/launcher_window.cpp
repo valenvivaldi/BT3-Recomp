@@ -48,6 +48,32 @@ namespace
         QByteArray tail = f.read(8);
         return tail == QByteArray("BT3SELFX");
     }
+
+    // Names the self-extracting release ELF has shipped under, newest first.
+    QString selfExtractElfPath(const QDir &appDir)
+    {
+        static const char *kCandidates[] = {
+            "Dragon Ball - Budokai Tenkaichi 3",
+            "Dragon Ball Budokai Tenkaichi 3",
+            "SLUS-216.78",
+        };
+        for (const char *c : kCandidates)
+        {
+            const QString p = appDir.filePath(QString::fromLatin1(c));
+            if (QFile::exists(p) && isSelfExtractElf(p))
+                return p;
+        }
+        return QString();
+    }
+
+    QString plainRunnerPath(const QDir &appDir, const QString &runnerName)
+    {
+#ifdef _WIN32
+        return appDir.filePath(runnerName + QStringLiteral(".exe"));
+#else
+        return appDir.filePath(runnerName);
+#endif
+    }
 } // namespace
 
 LauncherWindow::LauncherWindow(QWidget *parent)
@@ -101,6 +127,8 @@ LauncherWindow::LauncherWindow(QWidget *parent)
     m_variant->setMinimumWidth(210);
     for (const GameVariant &variant : m_variants)
         m_variant->addItem(variant.title, variant.id);
+    if (m_variantIndex >= 0)
+        m_variant->setCurrentIndex(m_variantIndex);
     // Only one profile installed: the selector would be a one-item dropdown.
     m_variant->setVisible(m_variants.size() > 1);
 
@@ -143,9 +171,14 @@ LauncherWindow::LauncherWindow(QWidget *parent)
     SettingsManager::instance().load();
 }
 
-// The canonical profile (record 0) is always offered: on a release deploy its
-// runner may be the self-extracting ELF rather than a plain binary next to us.
-// An alternate profile only appears once its runner is actually installed here.
+// A profile is offered only when something can actually boot it: the
+// self-extracting release ELF for the canonical target, or a plain runner binary
+// next to the launcher. A deploy may therefore carry any subset -- including one
+// with an alternate runner but no USA one.
+//
+// The selection then prefers the canonical profile whenever it is installed, and
+// otherwise falls back to the first one that is. It is not persisted: every start
+// re-reads what is on disk, so a profile that disappears cannot be preselected.
 void LauncherWindow::scanVariants()
 {
     m_variants.clear();
@@ -161,13 +194,23 @@ void LauncherWindow::scanVariants()
         variant.expectedSha256 = QString::fromLatin1(record.expectedSha256);
         variant.selfExtracting = record.selfExtracting;
 
-        QString runner = appDir.filePath(variant.runnerName);
-#ifdef _WIN32
-        runner += QStringLiteral(".exe");
-#endif
-        if (!m_variants.isEmpty() && !QFileInfo(runner).isExecutable())
+        const bool hasSelfExtract =
+            variant.selfExtracting && !selfExtractElfPath(appDir).isEmpty();
+        const bool hasRunner =
+            QFileInfo(plainRunnerPath(appDir, variant.runnerName)).isExecutable();
+        if (!hasSelfExtract && !hasRunner)
             continue;
         m_variants.push_back(variant);
+    }
+
+    m_variantIndex = m_variants.isEmpty() ? -1 : 0;
+    for (int i = 0; i < m_variants.size(); ++i)
+    {
+        if (m_variants.at(i).id == QLatin1String(kCanonicalVariantId))
+        {
+            m_variantIndex = i;
+            break;
+        }
     }
 }
 
@@ -195,48 +238,10 @@ void LauncherWindow::resolveLaunchTarget()
     const GameVariant &variant = m_variants.at(m_variantIndex);
     const QDir appDir(QApplication::applicationDirPath());
     if (variant.selfExtracting)
-    {
-        static const char *kCandidates[] = {
-            "Dragon Ball - Budokai Tenkaichi 3",
-            "Dragon Ball Budokai Tenkaichi 3",
-            "SLUS-216.78",
-        };
-        for (const char *c : kCandidates)
-        {
-            const QString p = appDir.filePath(QString::fromLatin1(c));
-            if (QFile::exists(p) && isSelfExtractElf(p))
-            {
-                m_gameElf = p;
-                break;
-            }
-        }
-    }
+        m_gameElf = selfExtractElfPath(appDir);
     if (m_gameElf.isEmpty())
-    {
-#ifdef _WIN32
-        const QString runner = appDir.filePath(variant.runnerName + QStringLiteral(".exe"));
-#else
-        const QString runner = appDir.filePath(variant.runnerName);
-#endif
-        m_plainRunner = QFileInfo(runner).isExecutable();
-    }
-}
-
-QString LauncherWindow::findGameElf()
-{
-    const QDir appDir(QApplication::applicationDirPath());
-    static const char *kCandidates[] = {
-        "Dragon Ball - Budokai Tenkaichi 3",
-        "Dragon Ball Budokai Tenkaichi 3",
-        "SLUS-216.78",
-    };
-    for (const char *c : kCandidates)
-    {
-        const QString p = appDir.filePath(QString::fromLatin1(c));
-        if (QFile::exists(p) && isSelfExtractElf(p))
-            return p;
-    }
-    return QString();
+        m_plainRunner =
+            QFileInfo(plainRunnerPath(appDir, variant.runnerName)).isExecutable();
 }
 
 void LauncherWindow::onPlayClicked()
@@ -342,7 +347,12 @@ void LauncherWindow::updateHint()
 
     QString color;
     QString text;
-    if (!m_gameDataValid)
+    if (m_variants.isEmpty())
+    {
+        color = kRed;
+        text = QStringLiteral("No game runner found next to this launcher");
+    }
+    else if (!m_gameDataValid)
     {
         color = kRed;
         text = QStringLiteral("Missing or Corrupted Data");
@@ -381,9 +391,14 @@ void LauncherWindow::showEvent(QShowEvent *e)
 {
     QMainWindow::showEvent(e);
 
-    // Pop the install wizard automatically on first launch when the game data
-    // is missing/corrupt. The subsequent runs are user-initiated (PLAY button).
-    if (!m_gameDataValid && !m_wizardShown)
+    // Pop the install wizard automatically on first launch when the game data is
+    // missing/corrupt. It installs the canonical disc tree, so it is only offered
+    // while that profile is the selected one -- an alternate profile has its own
+    // data directory, which updateHint() names instead.
+    const bool canonicalSelected =
+        m_variantIndex >= 0 && m_variantIndex < m_variants.size() &&
+        m_variants.at(m_variantIndex).id == QLatin1String(kCanonicalVariantId);
+    if (!m_gameDataValid && !m_wizardShown && canonicalSelected)
     {
         m_wizardShown = true;
         QTimer::singleShot(0, this, [this] {

@@ -60,6 +60,9 @@ def render(items: list[dict]) -> str:
         "    bool selfExtracting;",
         "};",
         "",
+        "// The launcher prefers this profile when its runner is installed.",
+        f'constexpr const char *kCanonicalVariantId = "{CANONICAL}";',
+        "",
         "constexpr VariantRecord kVariantRecords[] = {",
     ]
     for item in items:

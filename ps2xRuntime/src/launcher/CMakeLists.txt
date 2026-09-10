@@ -39,13 +39,15 @@ file(GLOB LAUNCHER_SOURCES CONFIGURE_DEPENDS
 # launcher cannot read the repository at runtime, so the table is generated here
 # and #included by launcher_window.cpp. Touching a descriptor re-runs cmake.
 set(PS2X_VARIANTS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../games/bt3/variants")
+set(PS2X_VARIANT_TABLE_GEN
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/gen_variant_table.py")
 file(GLOB PS2X_VARIANT_DESCRIPTORS "${PS2X_VARIANTS_DIR}/*.json")
+# Reconfigure when a descriptor *or* the generator itself changes.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    ${PS2X_VARIANT_DESCRIPTORS})
+    ${PS2X_VARIANT_DESCRIPTORS} "${PS2X_VARIANT_TABLE_GEN}")
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 execute_process(
-    COMMAND "${Python3_EXECUTABLE}"
-            "${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/gen_variant_table.py"
+    COMMAND "${Python3_EXECUTABLE}" "${PS2X_VARIANT_TABLE_GEN}"
             "${PS2X_VARIANTS_DIR}"
             "${CMAKE_CURRENT_BINARY_DIR}/generated/variant_table.inc"
     RESULT_VARIABLE PS2X_VARIANT_TABLE_RESULT

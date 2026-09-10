@@ -16,10 +16,6 @@ class LauncherWindow : public QMainWindow
 public:
     explicit LauncherWindow(QWidget *parent = nullptr);
 
-    // Absolute path to the playable game ELF (self-extracting BT3SELFX binary)
-    // found next to the launcher. Empty if none detected.
-    static QString findGameElf();
-
 private slots:
     void onPlayClicked();
     void onSettingsClicked();
