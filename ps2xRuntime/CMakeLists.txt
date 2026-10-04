@@ -698,6 +698,7 @@ endif()
 add_subdirectory(third_party/rcheevos EXCLUDE_FROM_ALL)
 
 add_library(ps2_runtime STATIC
+src/lib/custom_songs.cpp        # [customsongs] songs from a folder in the BGM selector
 src/lib/game_overrides.cpp
 src/lib/ps2x_mods.cpp         # [mods] loadable game mods (ps2x_mod_api.h)
 src/lib/ps2x_dueldump.cpp       # [dueldump] total capture of the Duel menu flow

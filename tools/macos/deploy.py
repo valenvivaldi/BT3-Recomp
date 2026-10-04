@@ -224,7 +224,7 @@ def main():
     support = Path.home() / "Library" / "Application Support" / "BT3-Recomp"
     macos_dir = dest / "Contents" / "MacOS"
     linked = []
-    for name in ("data", "savedata", "mods", "logs"):
+    for name in ("data", "savedata", "mods", "logs", "songs"):   # songs: [customsongs] the BGM selector's extra entries
         target = support / name
         target.mkdir(parents=True, exist_ok=True)
         link = macos_dir / name

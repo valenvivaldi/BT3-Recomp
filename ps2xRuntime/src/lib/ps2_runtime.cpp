@@ -28,6 +28,7 @@ extern "C" int ps2xSchedTraceOn();               // PS2X_SCHEDTRACE window (defi
 #endif
 #include "ps2_host_window.h"   // [B] native window handle (SDL returns SDL_Window*, not the HWND)
 #include "runtime/ps2_texreplace.h"   // [texreplace]
+#include "runtime/custom_songs.h"   // [customsongs]
 #include "runtime/ps2_coverage.h"     // [coverage]
 #include "runtime/ps2_iop_module.h"   // [r3000] IRX loader
 #include "runtime/ps2_toml.h"         // settings.toml
@@ -1673,6 +1674,7 @@ bool PS2Runtime::initialize(const char *title)
         // PS2X_HOSTAUDIO=raylib / PS2X_HOSTPAD=raylib); the window and keyboard stay raylib's.
         ps2x_audio::init();
         m_audioBackend.setAudioReady(ps2x_audio::ready());
+        customsongs::loadCatalog(ps2xExeDirC());   // [customsongs] songs/ beside the runner
         _mark("audio");
         ps2x_pad::init();
 #endif

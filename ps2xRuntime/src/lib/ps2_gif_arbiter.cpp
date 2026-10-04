@@ -1,4 +1,6 @@
 #include "runtime/ps2_gif_arbiter.h"
+#include <set>
+#include "runtime/custom_songs.h"
 #include "runtime/ps2_seamprobe.h"   // [pktoracle]
 #include "runtime/ps2_seamvk.h"   // [seamvk]
 #include "runtime/ps2_gs_pgs.h"
@@ -147,6 +149,52 @@ void GifArbiter::submit(GifPathId pathId, const uint8_t *data, uint32_t sizeByte
     if (!data || sizeBytes < 16 || !m_processFn)
         return;
     if (censusOn() && pathId != GifPathId::HostDraw) censusWalk(pathId, data, sizeBytes);   // [gifcensus]
+    thread_local std::vector<uint8_t> t_labelScratch;   // [bgmmenu] the custom songs' titles on the BGM Select plate
+    if (pathId == GifPathId::Path2) data = customsongs::filterGifPacket(data, sizeBytes, t_labelScratch);
+    {   // [imgprobe] PS2X_IMGPROBE=<from frame>: one line per distinct IMAGE payload (>= 4 KB) with its hash -- finds a
+        // menu label's upload by content (the BGM selector's "???" plate)
+        static const long long s_from = [](){ const char *v = std::getenv("PS2X_IMGPROBE"); return v && v[0] ? std::atoll(v) : -1ll; }();
+        if (s_from >= 0 && (long long)g_bt3FrameCount.load(std::memory_order_relaxed) >= s_from)
+        {
+            static std::set<uint64_t> s_seen;
+            for (uint32_t off = 0; off + 16u <= sizeBytes; )
+            {
+                uint64_t lo; std::memcpy(&lo, data + off, 8);
+                const uint32_t nloop = (uint32_t)(lo & 0x7FFFu), flg = (uint32_t)((lo >> 58) & 3u), nreg = (uint32_t)((lo >> 60) & 0xFu) ? (uint32_t)((lo >> 60) & 0xFu) : 16u;
+                off += 16u;
+                const uint32_t body = flg >= 2u ? nloop * 16u : (flg == 1u ? ((nloop * nreg * 8u + 15u) & ~15u) : nloop * nreg * 16u);
+                const uint32_t take = std::min(body, sizeBytes - off);
+                static uint64_t s_bitblt = 0;
+                if (flg == 0u)
+                {   // PACKED: remember the last A+D BITBLTBUF (the destination of the next IMAGE)
+                    uint64_t hi; std::memcpy(&hi, data + off - 8u, 8);
+                    for (uint32_t i = 0; i < nloop * nreg && off + i * 16u + 16u <= sizeBytes; ++i)
+                        if (((hi >> (4u * (i % nreg))) & 0xFu) == 0xEu && data[off + i * 16u + 8u] == 0x50u)
+                            std::memcpy(&s_bitblt, data + off + i * 16u, 8);
+                }
+                if (flg >= 2u && take >= 4096u)
+                {
+                    uint64_t h = 1469598103934665603ull;
+                    for (uint32_t i = 0; i < take; ++i) { h ^= data[off + i]; h *= 1099511628211ull; }
+                    static const uint64_t s_dumpHash = [](){ const char *v = std::getenv("PS2X_IMGPROBE_DUMP"); return v && v[0] ? std::strtoull(v, nullptr, 16) : 0ull; }();
+                    if (h == s_dumpHash)
+                    {   // PS2X_IMGPROBE_DUMP=<hash>: the payload, plus the 256 bytes of registers before its tag
+                        static bool s_done = false;
+                        if (!s_done) { s_done = true; if (FILE *f = std::fopen("imgprobe_payload.bin", "wb")) { std::fwrite(data + off, 1, take, f); std::fclose(f); }
+                                       if (FILE *f = std::fopen("imgprobe_regs.bin", "wb")) { const uint32_t st = off >= 272u ? off - 272u : 0u; std::fwrite(data + st, 1, off - st, f); std::fclose(f); }
+                                       std::fprintf(stderr, "[imgprobe] dumped %016llx (%u bytes, tag at +%u)\n", (unsigned long long)h, take, off - 16u); }
+                    }
+                    if (s_seen.insert(h).second && s_seen.size() < 2000u)
+                    {
+                        extern uint8_t *g_ps2WatchRdram; uint32_t cur = 0xffffffffu; if (g_ps2WatchRdram) std::memcpy(&cur, g_ps2WatchRdram + 0xc4a88cu, 4);
+                        std::fprintf(stderr, "[imgprobe] frame %llu path %u bytes %u hash %016llx cursor %u bitbltbuf %016llx\n",
+                                     (unsigned long long)g_bt3FrameCount.load(), (unsigned)pathId, take, (unsigned long long)h, cur, (unsigned long long)s_bitblt);
+                    }
+                }
+                off += take;
+            }
+        }
+    }
 
     GifArbiterPacket pkt;
     pkt.pathId = pathId;

@@ -48,6 +48,7 @@ extern "C" unsigned long long ps2xWinThreadCpuNs();
 #include "ps2_syscalls.h"
 #include "ps2_log.h"
 #include "runtime/pad_config.h"
+#include "runtime/custom_songs.h"   // [customsongs]
 #include "runtime/ps2_memory.h"
 #include "Kernel/Stubs/MemoryCard.h"   // [savestate] getMemoryCardDebugSnapshot (deferred quickload)
 #include "runtime/ps2x_dueldump.h"
@@ -4621,6 +4622,7 @@ namespace
         const double dt = std::chrono::duration<double>(now - s_t0).count();
         if (dt >= 5.0) { std::fprintf(stderr, "[logicrate] %.1f fight updates/s (%u in %.1f s)\n", (double)n / dt, n, dt); s_n.store(0u); s_t0 = now; }
         ps2HalfStepNoteLogic(g_bt3FrameCount.load(std::memory_order_relaxed));   // [fightgate]
+        customsongs::noteFightUpdate(g_bt3FrameCount.load(std::memory_order_relaxed));   // [bgmmenu] the committed song plays during fights
         {   // [fighttick] a stream marker for this fight update: the native renderer stamps the frame lists with it, in
             // stream order, so "fight tick N" names the same list in every run of a replay (the vblank flip's own stamp
             // jitters by a frame: the handler preempts the game thread wherever it happens to be)
@@ -5757,6 +5759,8 @@ namespace
             }
         }
         {   // [ramdump] PS2X_RAMDUMP=<frame>[,<path>]: write the 32 MB of EE RAM once at that game frame (default work/ramdump.bin)
+            // PS2X_RAMDUMPS=<f1>:<f2>:...[,<dir>]: one dump per listed frame, <dir>/ram_<frame>.bin (finding a menu cursor
+            // takes several snapshots of the same replay, a frame apart in cursor position)
             static const uint64_t s_at = [](){ const char *e = std::getenv("PS2X_RAMDUMP"); return e && e[0] ? (uint64_t)std::strtoull(e, nullptr, 0) : 0ull; }();
             static bool s_done = false;
             if (s_at && !s_done && rdram && g_bt3FrameCount.load(std::memory_order_relaxed) >= s_at)
@@ -5765,6 +5769,22 @@ namespace
                 const char *path = c ? c + 1 : "ramdump.bin";
                 if (FILE *f = std::fopen(path, "wb")) { std::fwrite(rdram, 1, 32u * 1024u * 1024u, f); if (const uint8_t *spr = ps2GetScratchpadHostPtr()) std::fwrite(spr, 1, 16384, f); std::fclose(f); std::fprintf(stderr, "[ramdump] frame %llu -> %s (+16 KB scratchpad)\n", (unsigned long long)g_bt3FrameCount.load(), path); }
             }
+            static std::vector<uint64_t> s_list = [](){ std::vector<uint64_t> v; const char *e = std::getenv("PS2X_RAMDUMPS");
+                for (const char *q = e; q && *q && *q != ','; ) { v.push_back(std::strtoull(q, (char **)&q, 10)); if (*q == ':') ++q; else break; } return v; }();
+            static size_t s_next = 0;
+            if (s_next < s_list.size() && rdram && g_bt3FrameCount.load(std::memory_order_relaxed) >= s_list[s_next])
+            {
+                const char *e = std::getenv("PS2X_RAMDUMPS"); const char *c = std::strchr(e, ',');
+                char path[1024]; std::snprintf(path, sizeof path, "%s/ram_%llu.bin", c ? c + 1 : ".", (unsigned long long)s_list[s_next]);
+                if (FILE *f = std::fopen(path, "wb")) { std::fwrite(rdram, 1, 32u * 1024u * 1024u, f); std::fclose(f); std::fprintf(stderr, "[ramdump] frame %llu -> %s\n", (unsigned long long)g_bt3FrameCount.load(), path); }
+                ++s_next;
+            }
+        }
+        {   // [poke] PS2X_POKE=<hex addr>=<hex value>[,...]: write these EE words every frame (menu experiments)
+            static std::vector<std::pair<uint32_t,uint32_t>> s_pokes = [](){ std::vector<std::pair<uint32_t,uint32_t>> v; const char *e = std::getenv("PS2X_POKE");
+                for (const char *q = e; q && *q; ) { char *x; const uint32_t a = (uint32_t)std::strtoul(q, &x, 16); if (*x != '=') break; const uint32_t val = (uint32_t)std::strtoul(x + 1, &x, 16); v.push_back({a & 0x1FFFFFFCu, val}); if (*x != ',') break; q = x + 1; } return v; }();
+            static const uint64_t s_pokeFrom = [](){ const char *e = std::getenv("PS2X_POKE_FROM"); return e && e[0] ? std::strtoull(e, nullptr, 10) : 0ull; }();
+            if (rdram && g_bt3FrameCount.load(std::memory_order_relaxed) >= s_pokeFrom) for (const auto &pk : s_pokes) std::memcpy(rdram + pk.first, &pk.second, 4);
         }
         if (s_addrs.empty() || !rdram) return;
         static std::vector<uint32_t> s_prev(s_addrs.size(), 0xdeadbeefu);
@@ -6797,6 +6817,7 @@ namespace
         bt3MatchWatch(rdram);        // [matchwatch]
         bt3MatchScan(rdram);         // [matchwatch] level 2
         bt3MemWatch(rdram);          // [memwatch]
+        customsongs::bgmMenuTick(rdram, g_bt3FrameCount.load(std::memory_order_relaxed));   // [bgmmenu]
         bt3MemBlock(rdram);          // [memblock]
         bt3DumpKey(rdram);           // [dumpkey]
         if (bt3StateLogOn()) bt3StateLogFrame(rdram);   // [statelog] one line per screen change

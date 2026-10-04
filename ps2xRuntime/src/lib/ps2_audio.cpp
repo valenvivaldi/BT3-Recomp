@@ -1,6 +1,7 @@
 #include "runtime/ps2_audio.h"
 #include "runtime/ps2_memory.h"
 #include "runtime/ps2_host_audio.h"
+#include "runtime/custom_songs.h"   // [customsongs]
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -493,6 +494,7 @@ void PS2AudioBackend::serviceStreams()
         }
     }
 
+    customsongs::service();   // [customsongs]
     std::lock_guard<std::mutex> lock(m_streamMutex);
 
     // ---- STEREO PAIRING -------------------------------------------------------------
@@ -681,7 +683,8 @@ void PS2AudioBackend::serviceStreams()
 
         if (L.started)
         {
-            const float musicVol = s_masterVolume * s_musicVolume * s_curtainMute;
+            // [customsongs] a song from the folder replaces the BGM: the pair keeps its pacing, mixed at zero
+            const float musicVol = customsongs::active() ? 0.0f : s_masterVolume * s_musicVolume * s_curtainMute;
             std::vector<int16_t> inter(kStreamChunkFrames * 2u);
             while (ps2x_audio::streamProcessed(s) &&
                    std::min(L.ring.size(), R.ring.size()) >= kStreamChunkFrames)
